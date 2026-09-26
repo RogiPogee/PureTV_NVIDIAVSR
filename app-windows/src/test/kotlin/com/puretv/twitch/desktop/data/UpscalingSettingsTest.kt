@@ -9,6 +9,7 @@ class UpscalingSettingsTest {
     @Test fun parsesUpscaling() {
         assertEquals(UpscalingMode.STANDARD, parseUpscalingMode("standard"))
         assertEquals(UpscalingMode.ANIME, parseUpscalingMode("ANIME"))
+        assertEquals(UpscalingMode.NVIDIA_RTX_VSR, parseUpscalingMode("nvidia_rtx_vsr"))
         assertEquals(UpscalingMode.OFF, parseUpscalingMode("off"))
         assertEquals(UpscalingMode.OFF, parseUpscalingMode("garbage"))
         assertEquals(UpscalingMode.OFF, parseUpscalingMode(null))
