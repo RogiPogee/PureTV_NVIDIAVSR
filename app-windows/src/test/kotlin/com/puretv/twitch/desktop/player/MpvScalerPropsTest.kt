@@ -18,6 +18,13 @@ class MpvScalerPropsTest {
         assertEquals("", p["glsl-shaders"], "Off must clear the shader even when paths are supplied")
     }
 
+    @Test fun rtxVsrFallsBackToNeutralMpvScaling() {
+        val p = mpvScalerProps(UpscalingMode.NVIDIA_RTX_VSR, shaders)
+        assertEquals("bilinear", p["scale"])
+        assertEquals("bilinear", p["cscale"])
+        assertEquals("", p["glsl-shaders"])
+    }
+
     @Test fun standardIsEwaPlusCas() {
         val p = mpvScalerProps(UpscalingMode.STANDARD, shaders)
         assertEquals("ewa_lanczossharp", p["scale"])
@@ -58,5 +65,6 @@ class MpvScalerPropsTest {
         assertEquals(keys, mpvScalerProps(UpscalingMode.OFF, shaders).keys)
         assertEquals(keys, mpvScalerProps(UpscalingMode.STANDARD, shaders).keys)
         assertEquals(keys, mpvScalerProps(UpscalingMode.ANIME, shaders).keys)
+        assertEquals(keys, mpvScalerProps(UpscalingMode.NVIDIA_RTX_VSR, shaders).keys)
     }
 }
