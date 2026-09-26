@@ -70,7 +70,7 @@ val desktopModule = module {
     // --- Playback ------------------------------------------------------------
     single<DesktopPlayer> {
         val store = get<DesktopSettingsStore>()
-        if (store.settings.value.playbackBackend == PlaybackBackend.MPV) MpvPlayer(store) else VlcPlayer()
+        if (store.settings.value.playbackBackend == PlaybackBackend.MPV) MpvPlayer(store) else VlcPlayer(store)
     }
     // LocalStreamProxy takes HttpClient (variant fetches) + BackupStreamResolver
     // (the player-type swap that actually removes ads) on top of StreamRepository
