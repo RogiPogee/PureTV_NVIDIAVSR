@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.player
 
+import com.puretv.twitch.core.model.PlaybackBackend
 import com.puretv.twitch.core.model.UpscalingMode
 import kotlinx.coroutines.flow.StateFlow
 import java.awt.Component
@@ -21,6 +22,8 @@ import java.awt.Component
 interface DesktopPlayer {
     val status: StateFlow<PlayerStatus>
     val isAvailable: Boolean
+    /** The backend this player instance actually booted with. Engine changes are restart-gated. */
+    val backend: PlaybackBackend
 
     /** Whether this backend exposes a GPU upscaling mode in the playback menu. */
     val supportsUpscaling: Boolean get() = false
