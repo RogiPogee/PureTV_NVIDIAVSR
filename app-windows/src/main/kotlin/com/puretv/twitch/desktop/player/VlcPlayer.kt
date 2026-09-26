@@ -1,5 +1,8 @@
 package com.puretv.twitch.desktop.player
 
+import com.puretv.twitch.core.model.PlaybackBackend
+import com.puretv.twitch.core.model.UpscalingMode
+import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,6 +13,24 @@ import uk.co.caprica.vlcj.player.base.State
 import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer
 import java.awt.Component
 import javax.swing.SwingUtilities
+
+/**
+ * VLC 3.0.x exposes Windows Direct3D 11 Super Resolution through
+ * `d3d11-upscale-mode=super`. On a supported NVIDIA RTX GPU/driver this routes
+ * through NVIDIA RTX Video Super Resolution. VLC itself detects support and
+ * falls back to its linear scaler when the driver cannot provide Super Resolution.
+ *
+ * The D3D11 renderer is forced only for RTX VSR. In every other mode PureTV keeps
+ * VLC's normal output selection/fallback behavior while explicitly selecting the
+ * linear D3D11 scaler if Direct3D 11 is chosen.
+ */
+internal fun vlcUpscalingArgs(mode: UpscalingMode): List<String> = when (mode) {
+    UpscalingMode.NVIDIA_RTX_VSR -> listOf(
+        "--vout=direct3d11",
+        "--d3d11-upscale-mode=super",
+    )
+    else -> listOf("--d3d11-upscale-mode=linear")
+}
 
 /**
  * SECTION 08.2 [CRITICAL] — wraps VLC via VLCJ for video playback.
@@ -29,7 +50,7 @@ import javax.swing.SwingUtilities
  * onto the EDT via [SwingUtilities.invokeLater]. [PlayerStatus] updates are
  * safe to publish from any thread since [MutableStateFlow] is thread-safe.
  */
-class VlcPlayer : DesktopPlayer {
+class VlcPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer {
 
     // Must be initialised before `factory` so jna.library.path is set before
     // VLCJ's JNA binding loads libvlc.dll.  Kotlin initialises properties in
@@ -45,14 +66,18 @@ class VlcPlayer : DesktopPlayer {
      * `--live-caching=1000`       — separate, shorter buffer specifically for
      *                               live sources.
      * `--sout-mux-caching=500`    — output muxer cache; keeps A/V sync tight.
+     * `--d3d11-upscale-mode=super` — requested only for RTX VSR; VLC falls
+     *                                  back to linear when unsupported.
      */
     private val factory: MediaPlayerFactory? = runCatching {
-        MediaPlayerFactory(
-            "--no-video-title-show",
-            "--network-caching=2000",
-            "--live-caching=1000",
-            "--sout-mux-caching=500",
-        )
+        val args = buildList {
+            add("--no-video-title-show")
+            add("--network-caching=2000")
+            add("--live-caching=1000")
+            add("--sout-mux-caching=500")
+            addAll(vlcUpscalingArgs(settingsStore.settings.value.upscalingMode))
+        }
+        MediaPlayerFactory(args)
     }.getOrNull()
 
     private val mediaPlayer: EmbeddedMediaPlayer? = factory?.mediaPlayers()?.newEmbeddedMediaPlayer()
@@ -70,6 +95,8 @@ class VlcPlayer : DesktopPlayer {
     override val status: StateFlow<PlayerStatus> = _status.asStateFlow()
 
     override val isAvailable: Boolean get() = mediaPlayer != null
+    override val backend: PlaybackBackend = PlaybackBackend.VLC
+    override val supportsUpscaling: Boolean get() = isAvailable
 
     private var currentUrl: String? = null
 

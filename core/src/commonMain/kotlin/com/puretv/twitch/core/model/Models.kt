@@ -175,14 +175,20 @@ data class ChannelEmote(
 
 // ---- Settings ----
 
-/** GPU video upscaling mode. STANDARD/ANIME are effective only on the mpv
- *  backend (VLC ignores them); that gating lives in the player + settings UI,
- *  not here — this enum is backend-agnostic data.
- *  - OFF     — bilinear; native resolution (the A/B baseline).
- *  - STANDARD ("Sharp") — ewa_lanczossharp + CAS sharpening; general / live-action content.
- *  - ANIME   — Anime4K Mode-A shader pipeline; line sharpening + artefact reduction for animation.
+/** GPU video upscaling mode. Modes are backend-specific and the player/settings
+ *  UI exposes only the modes that make sense for the selected engine.
+ *  - OFF     — baseline scaling with no optional enhancement.
+ *  - STANDARD ("Sharp") — mpv ewa_lanczossharp + CAS for general/live-action content.
+ *  - ANIME   — mpv Anime4K Mode-A shader pipeline for animation.
+ *  - NVIDIA_RTX_VSR — VLC Direct3D 11 Super Resolution, backed by NVIDIA RTX Video
+ *    Super Resolution when the installed NVIDIA GPU/driver exposes it.
  *  NOTE: persistence keys off the enum NAME (see parseUpscalingMode), so the label is free to change. */
-enum class UpscalingMode(val label: String) { OFF("Off"), STANDARD("Sharp"), ANIME("Anime") }
+enum class UpscalingMode(val label: String) {
+    OFF("Off"),
+    STANDARD("Sharp"),
+    ANIME("Anime"),
+    NVIDIA_RTX_VSR("RTX VSR"),
+}
 
 /** Selects which media-player backend handles playback.
  *  VLC  — VLCJ / libVLC (current default; stable, battle-tested).

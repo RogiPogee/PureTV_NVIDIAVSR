@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.player
 
+import com.puretv.twitch.core.model.PlaybackBackend
 import com.puretv.twitch.core.model.UpscalingMode
 import kotlinx.coroutines.flow.StateFlow
 import java.awt.Component
@@ -21,8 +22,10 @@ import java.awt.Component
 interface DesktopPlayer {
     val status: StateFlow<PlayerStatus>
     val isAvailable: Boolean
+    /** The backend this player instance actually booted with. Engine changes are restart-gated. */
+    val backend: PlaybackBackend
 
-    /** Whether this (running) backend can GPU-upscale — true only for an available mpv. */
+    /** Whether this backend exposes a GPU upscaling mode in the playback menu. */
     val supportsUpscaling: Boolean get() = false
     fun play(streamUrl: String)
     fun pause()
@@ -56,11 +59,9 @@ interface DesktopPlayer {
     fun renderStatsOverlay(show: Boolean) {}
 
     /**
-     * Apply an [UpscalingMode] to the LIVE video, immediately — no restart. mpv
-     * pushes the scaler chain to the running context so the picture changes on the
-     * next frame. Default no-op (VLC has no GPU upscaler in this build). The caller
-     * still persists the mode so it survives restarts. Call from the UI thread, like
-     * the other transport calls (the running player's context is read, not freed).
+     * Apply an [UpscalingMode]. mpv can update its scaler chain live. VLC's RTX
+     * VSR mode is startup-configured, so VLC keeps this default no-op and the caller
+     * persists the choice for the next launch. Call from the UI thread.
      */
     fun setUpscaling(mode: UpscalingMode) {}
 }
