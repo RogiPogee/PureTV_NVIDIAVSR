@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.player
 
+import com.puretv.twitch.core.model.PlaybackBackend
 import com.puretv.twitch.core.model.UpscalingMode
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,7 +77,7 @@ class VlcPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
             add("--sout-mux-caching=500")
             addAll(vlcUpscalingArgs(settingsStore.settings.value.upscalingMode))
         }
-        MediaPlayerFactory(*args.toTypedArray())
+        MediaPlayerFactory(args)
     }.getOrNull()
 
     private val mediaPlayer: EmbeddedMediaPlayer? = factory?.mediaPlayers()?.newEmbeddedMediaPlayer()
@@ -94,6 +95,7 @@ class VlcPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
     override val status: StateFlow<PlayerStatus> = _status.asStateFlow()
 
     override val isAvailable: Boolean get() = mediaPlayer != null
+    override val backend: PlaybackBackend = PlaybackBackend.VLC
     override val supportsUpscaling: Boolean get() = isAvailable
 
     private var currentUrl: String? = null
