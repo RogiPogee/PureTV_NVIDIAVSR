@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.player
 
+import com.puretv.twitch.core.model.PlaybackBackend
 import com.puretv.twitch.core.model.UpscalingMode
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.sun.jna.Native
@@ -57,6 +58,7 @@ class MpvPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
     )
     override val status: StateFlow<PlayerStatus> = _status.asStateFlow()
     override val isAvailable: Boolean get() = available
+    override val backend: PlaybackBackend = PlaybackBackend.MPV
     override val supportsUpscaling: Boolean get() = available
 
     @Volatile private var initialized = false
