@@ -257,7 +257,8 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                         upscalingMode = appSettings.upscalingMode,
                         onUpscalingSelected = viewModel::setUpscaling,
                         scalingEnabled = viewModel.player.supportsUpscaling,
-                        backend = appSettings.playbackBackend,
+                        activeBackend = viewModel.player.backend,
+                        selectedBackend = appSettings.playbackBackend,
                         onBackendSelected = viewModel::setPlaybackBackend,
                     )
                 }
