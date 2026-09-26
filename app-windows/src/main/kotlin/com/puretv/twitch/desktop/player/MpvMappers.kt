@@ -71,6 +71,7 @@ internal fun upscaleModeLabel(mode: UpscalingMode): String = when (mode) {
     UpscalingMode.OFF -> "Off"
     UpscalingMode.STANDARD -> "Sharp"
     UpscalingMode.ANIME -> "Anime"
+    UpscalingMode.NVIDIA_RTX_VSR -> "RTX VSR"
 }
 
 /** Resolved (forward-slashed) absolute paths to the bundled upscaling shaders.
@@ -94,7 +95,11 @@ internal fun joinShaders(paths: List<String>): String =
  * (set_option) and live re-apply (set_property).
  */
 internal fun mpvScalerProps(mode: UpscalingMode, shaders: ShaderPaths): Map<String, String> = when (mode) {
-    UpscalingMode.OFF -> mapOf("scale" to "bilinear", "cscale" to "bilinear", "dscale" to "bilinear", "glsl-shaders" to "")
+    UpscalingMode.OFF,
+    // RTX VSR is a VLC/D3D11 mode. If it is still persisted while the user
+    // switches to mpv, use the neutral baseline rather than applying a wrong scaler.
+    UpscalingMode.NVIDIA_RTX_VSR,
+    -> mapOf("scale" to "bilinear", "cscale" to "bilinear", "dscale" to "bilinear", "glsl-shaders" to "")
     UpscalingMode.STANDARD -> mapOf(
         "scale" to "ewa_lanczossharp", "cscale" to "ewa_lanczossharp", "dscale" to "mitchell",
         "glsl-shaders" to joinShaders(listOf(shaders.cas)),
