@@ -30,12 +30,13 @@ fun PlayerSettingsMenu(
     upscalingMode: UpscalingMode,
     onUpscalingSelected: (UpscalingMode) -> Unit,
     scalingEnabled: Boolean,
-    backend: PlaybackBackend,
+    activeBackend: PlaybackBackend,
+    selectedBackend: PlaybackBackend,
     onBackendSelected: (PlaybackBackend) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = PureTvTheme.colors
-    val scalingOptions = when (backend) {
+    val scalingOptions = when (activeBackend) {
         PlaybackBackend.VLC -> listOf(UpscalingMode.OFF, UpscalingMode.NVIDIA_RTX_VSR)
         PlaybackBackend.MPV -> listOf(UpscalingMode.OFF, UpscalingMode.STANDARD, UpscalingMode.ANIME)
     }
@@ -57,9 +58,9 @@ fun PlayerSettingsMenu(
             if (scalingEnabled) {
                 SegmentedControl(scalingOptions, displayedUpscalingMode, { it.label }, onUpscalingSelected)
                 Text(
-                    when (backend) {
+                    when (activeBackend) {
                         PlaybackBackend.VLC ->
-                            "RTX VSR uses VLC Direct3D 11 Super Resolution on compatible NVIDIA RTX GPUs. Applies after restart."
+                            "RTX VSR uses VLC Direct3D 11 Super Resolution on compatible NVIDIA RTX GPUs. Scaling changes apply after restart."
                         PlaybackBackend.MPV ->
                             "Sharp = general; Anime = animation. Hold X to compare against Off, F3 for live stats."
                     },
@@ -75,8 +76,13 @@ fun PlayerSettingsMenu(
             }
         }
         PlayerMenuSection("Engine") {
-            SegmentedControl(PlaybackBackend.entries.toList(), backend, { it.label }, onBackendSelected)
-            Text("Applies after restart.", style = PureTvType.dataSmall, color = c.outline)
+            SegmentedControl(PlaybackBackend.entries.toList(), selectedBackend, { it.label }, onBackendSelected)
+            Text(
+                if (selectedBackend == activeBackend) "Engine changes apply after restart."
+                else "Restart to switch from ${activeBackend.label} to ${selectedBackend.label}.",
+                style = PureTvType.dataSmall,
+                color = c.outline,
+            )
         }
     }
 }
