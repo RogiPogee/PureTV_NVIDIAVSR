@@ -18,13 +18,10 @@ import com.puretv.twitch.desktop.ui.theme.PureTvType
 /**
  * The in-player "Playback" menu: one panel reused by the live stream and VOD
  * players (highlights are VODs). It consolidates the per-playback controls:
- * Resolution (source quality, live), Scaling (mpv GPU upscaler, live), and Engine
- * (restart-gated). Rendered in the player Column (NOT floating over the video,
- * the heavyweight AWT Canvas paints above Compose), styled to the Cinémathèque
- * system. Stateless: the caller owns current values + callbacks.
- *
- * @param scalingEnabled false on the VLC backend, which has no GPU upscaler here, so
- *   the Scaling section then shows guidance instead of a dead control.
+ * Resolution (source quality, live), Scaling (mpv shaders or VLC RTX VSR), and
+ * Engine (restart-gated). Rendered in the player Column (NOT floating over the
+ * video, the heavyweight AWT Canvas paints above Compose), styled to the
+ * Cinémathèque system. Stateless: the caller owns current values + callbacks.
  */
 @Composable
 fun PlayerSettingsMenu(
@@ -38,6 +35,14 @@ fun PlayerSettingsMenu(
     modifier: Modifier = Modifier,
 ) {
     val c = PureTvTheme.colors
+    val scalingOptions = when (backend) {
+        PlaybackBackend.VLC -> listOf(UpscalingMode.OFF, UpscalingMode.NVIDIA_RTX_VSR)
+        PlaybackBackend.MPV -> listOf(UpscalingMode.OFF, UpscalingMode.STANDARD, UpscalingMode.ANIME)
+    }
+    // A persisted mode may belong to the other backend after an engine switch.
+    // Render that state as Off until the user chooses a mode for the selected engine.
+    val displayedUpscalingMode = upscalingMode.takeIf { it in scalingOptions } ?: UpscalingMode.OFF
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -50,15 +55,20 @@ fun PlayerSettingsMenu(
         }
         PlayerMenuSection("Scaling") {
             if (scalingEnabled) {
-                SegmentedControl(UpscalingMode.entries.toList(), upscalingMode, { it.label }, onUpscalingSelected)
+                SegmentedControl(scalingOptions, displayedUpscalingMode, { it.label }, onUpscalingSelected)
                 Text(
-                    "Sharp = general; Anime = animation. Hold X to compare against Off, F3 for live stats.",
+                    when (backend) {
+                        PlaybackBackend.VLC ->
+                            "RTX VSR uses VLC Direct3D 11 Super Resolution on compatible NVIDIA RTX GPUs. Applies after restart."
+                        PlaybackBackend.MPV ->
+                            "Sharp = general; Anime = animation. Hold X to compare against Off, F3 for live stats."
+                    },
                     style = PureTvType.dataSmall,
                     color = c.outline,
                 )
             } else {
                 Text(
-                    "Switch engine to mpv for GPU upscaling.",
+                    "GPU upscaling is unavailable for the selected engine.",
                     style = PureTvType.data,
                     color = c.outline,
                 )
