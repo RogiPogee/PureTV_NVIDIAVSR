@@ -410,7 +410,8 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                             upscalingMode = appSettings.upscalingMode,
                             onUpscalingSelected = viewModel::setUpscaling,
                             scalingEnabled = vlcPlayer.supportsUpscaling,
-                            backend = appSettings.playbackBackend,
+                            activeBackend = vlcPlayer.backend,
+                            selectedBackend = appSettings.playbackBackend,
                             onBackendSelected = viewModel::setPlaybackBackend,
                         )
                     }
