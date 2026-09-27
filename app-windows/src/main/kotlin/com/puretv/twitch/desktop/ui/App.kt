@@ -181,7 +181,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
             // darker ground they would just look like arbitrary rounding.
             Surface(modifier = Modifier.fillMaxSize(), color = c.surfaceLowest) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (shell.playerMode != PlayerMode.FULLSCREEN) {
+                    if (shell.playerMode != PlayerMode.FULLSCREEN && shell.playerMode != PlayerMode.COMPACT) {
                         CustomTitleBar(shell = shell, onClose = onClose, awtWindow = awtWindow)
                         if (!updateDismissed) {
                             UpdateBanner(
