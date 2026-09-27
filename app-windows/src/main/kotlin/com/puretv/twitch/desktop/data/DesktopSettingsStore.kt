@@ -55,6 +55,7 @@ class DesktopSettingsStore(
     private val tokensFile = File(appDataDir, "tokens.enc")
     private val keyFile = File(appDataDir, ".keyseed")
     private val authSchemaFile = File(appDataDir, ".authschema")
+    private val sourceQualityMigrationFile = File(appDataDir, ".source-quality-v1")
 
     // Compact JSON: machine-only files (plaintext settings + the encrypted token
     // payload). prettyPrint only inflated bytes/CPU; loaders are whitespace-insensitive.
@@ -117,6 +118,7 @@ class DesktopSettingsStore(
 
     init {
         appDataDir.mkdirs()
+        migrateDefaultQualityToSourceOnce()
         runMigrations()
         // Cold-start restoration: push the saved access token into the shared
         // TokenHolder so TwitchApiClient/TwitchGqlClient can authenticate on the
@@ -131,6 +133,22 @@ class DesktopSettingsStore(
      * minted under the old authorization_code flow can't be refreshed without the
      * client_secret, so clear them once and let the user sign in again.
      */
+    /**
+     * This fork prioritizes maximum image quality. Earlier builds defaulted to
+     * Auto, so existing installs would keep adaptive quality forever even after
+     * changing the new-install default. Migrate that old default once to Source;
+     * after the marker exists the user can still deliberately choose Auto later.
+     */
+    private fun migrateDefaultQualityToSourceOnce() {
+        if (sourceQualityMigrationFile.exists()) return
+        if (_settings.value.preferredQuality.equals("auto", ignoreCase = true)) {
+            val upgraded = _settings.value.copy(preferredQuality = "source")
+            _settings.value = upgraded
+            runCatching { AtomicFile.writeTextAtomically(settingsFile, json.encodeToString(upgraded.toDto())) }
+        }
+        runCatching { AtomicFile.writeTextAtomically(sourceQualityMigrationFile, "1") }
+    }
+
     private fun runMigrations() {
         val storedSchema = runCatching { authSchemaFile.readText().trim().toInt() }.getOrDefault(0)
         if (needsAuthReset(storedSchema, CURRENT_AUTH_SCHEMA, hasSession = tokensFile.exists())) {
@@ -149,7 +167,7 @@ class DesktopSettingsStore(
 
     @Serializable
     private data class SettingsDto(
-        val preferredQuality: String = "auto",
+        val preferredQuality: String = "source",
         val lowLatencyMode: Boolean = true,
         val adBlockEnabled: Boolean = true,
         val adBlockStrategy: String = "proxy",
@@ -225,13 +243,13 @@ class DesktopSettingsStore(
     fun flush() = settingsWriter.flush()
 
     private fun loadSettingsFromDisk(): AppSettings {
-        if (!settingsFile.exists()) return AppSettings()
+        if (!settingsFile.exists()) return AppSettings(preferredQuality = "source")
         val text = runCatching { settingsFile.readText() }.getOrNull() ?: return AppSettings()
         return runCatching { json.decodeFromString(SettingsDto.serializer(), text).toAppSettings() }
             .getOrElse {
                 // Preserve the unparseable settings before falling back to defaults (audit F3).
                 AtomicFile.quarantineCorrupt(settingsFile)
-                AppSettings()
+                AppSettings(preferredQuality = "source")
             }
     }
 
