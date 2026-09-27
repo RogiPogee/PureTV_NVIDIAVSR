@@ -16,7 +16,9 @@ private fun sourceFor(e: ChannelEmote, twitchIsChannel: Boolean): EmoteSource = 
 
 /**
  * Stable order: channel Twitch, channel third-party, Twitch globals, global
- * third-party. De-dupe by code (first wins, case-insensitive). Blank codes skipped.
+ * third-party. De-dupe only within the same provider/source so a name collision
+ * with Twitch/BTTV/FFZ cannot hide the 7TV version from the 7TV section.
+ * Blank codes are skipped.
  */
 fun buildPickableEmotes(
     twitchChannel: List<ChannelEmote>,
@@ -32,8 +34,11 @@ fun buildPickableEmotes(
     val seen = HashSet<String>()
     val out = ArrayList<PickableEmote>()
     for ((e, isChan) in ordered) {
-        if (e.name.isBlank() || !seen.add(e.name.lowercase())) continue
-        out += PickableEmote(e.name, e.url, e.animated, sourceFor(e, isChan))
+        if (e.name.isBlank()) continue
+        val source = sourceFor(e, isChan)
+        val key = source.name + ":" + e.name.lowercase()
+        if (!seen.add(key)) continue
+        out += PickableEmote(e.name, e.url, e.animated, source)
     }
     return out
 }
