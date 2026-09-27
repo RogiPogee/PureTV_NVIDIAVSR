@@ -249,6 +249,13 @@ class VlcPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
         }
     }
 
+    override fun jumpToLive() {
+        val mp = mediaPlayer ?: return
+        SwingUtilities.invokeLater {
+            if (mp.status().isSeekable) runCatching { mp.controls().setPosition(1.0f) }
+        }
+    }
+
     override fun resume() {
         val mp = mediaPlayer ?: return
         SwingUtilities.invokeLater {
