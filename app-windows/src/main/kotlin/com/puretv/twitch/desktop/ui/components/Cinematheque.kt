@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -364,6 +366,28 @@ fun ChatMessageRow(
     onReply: ((ChatMessage) -> Unit)? = null,
 ) {
     val c = PureTvTheme.colors
+    val clipboard = LocalClipboardManager.current
+    val emoteCodes = remember(message.parsedParts, message.deleted, message.isSystem) {
+        if (message.deleted || message.isSystem) {
+            emptyList()
+        } else {
+            buildList {
+                message.parsedParts.forEach { part ->
+                    when (part) {
+                        is MessagePart.Text -> Unit
+                        is MessagePart.TwitchEmote -> {
+                            add(part.name)
+                            part.overlays.forEach { add(it.name) }
+                        }
+                        is MessagePart.ThirdPartyEmote -> {
+                            add(part.name)
+                            part.overlays.forEach { add(it.name) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // System rows (subs, raids, "chat cleared") carry no user identity, so render a
     // single centred, muted line and skip the whole badge/username/emote pipeline.
@@ -397,12 +421,20 @@ fun ChatMessageRow(
         animationSpec = tween(PureTvMotion.Fast),
         label = "chatRowFill",
     )
-    val rowModifier = modifier
+    var rowModifier = modifier
         .fillMaxWidth()
         .clip(PureTvTheme.shapes.mdShape)
         .background(rowFill)
         .hoverable(rowInteraction)
-        .padding(horizontal = 12.dp, vertical = 7.dp)
+    if (emoteCodes.isNotEmpty()) {
+        rowModifier = rowModifier.clickable(
+            interactionSource = rowInteraction,
+            indication = null,
+        ) {
+            clipboard.setText(AnnotatedString(emoteCodes.joinToString(" ")))
+        }
+    }
+    rowModifier = rowModifier.padding(horizontal = 12.dp, vertical = 7.dp)
     Column(modifier = rowModifier) {
         val parentName = message.replyParentDisplayName
         if (parentName != null) {
