@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,7 +48,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +66,7 @@ import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.VodChatViewModel
 import com.puretv.twitch.desktop.ui.VodLaunch
 import com.puretv.twitch.desktop.ui.VodPlayerViewModel
+import com.puretv.twitch.desktop.ui.chat.filterChatMessages
 import com.puretv.twitch.desktop.ui.chat.nextFollowing
 import com.puretv.twitch.desktop.ui.chat.scrollAnchor
 import com.puretv.twitch.desktop.ui.components.ChatMessageRow
@@ -135,6 +141,10 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
     val c = PureTvTheme.colors
 
     var controlsVisible by remember { mutableStateOf(true) }
+    var chatSearchOpen by remember { mutableStateOf(false) }
+    var chatSearchQuery by remember { mutableStateOf("") }
+    var chatSearchFocused by remember { mutableStateOf(false) }
+    val chatSearchFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     var hideJob by remember { mutableStateOf<Job?>(null) }
     val currentMode by rememberUpdatedState(mode)
@@ -151,8 +161,30 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
     LaunchedEffect(mode) { resetControls() }
 
     val latestMode = rememberUpdatedState(mode)
+    val latestSearchFocused = rememberUpdatedState(chatSearchFocused)
+    val latestSearchOpen = rememberUpdatedState(chatSearchOpen)
+
+    LaunchedEffect(chatSearchOpen, isChatOpen) {
+        if (chatSearchOpen && isChatOpen) {
+            runCatching { chatSearchFocusRequester.requestFocus() }
+        }
+    }
+
     DisposableEffect(Unit) {
         val dispatcher = KeyEventDispatcher { e ->
+            if (e.id == KeyEvent.KEY_PRESSED && e.keyCode == KeyEvent.VK_F && e.isControlDown) {
+                if (!shell.isChatOpen) shell.toggleChat()
+                chatSearchOpen = true
+                return@KeyEventDispatcher true
+            }
+            if (latestSearchFocused.value) {
+                if (e.id == KeyEvent.KEY_PRESSED && e.keyCode == KeyEvent.VK_ESCAPE) {
+                    chatSearchOpen = false
+                    chatSearchQuery = ""
+                    return@KeyEventDispatcher true
+                }
+                return@KeyEventDispatcher false
+            }
             if (e.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
             val m = latestMode.value
             when (e.keyCode) {
@@ -166,7 +198,15 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                     true
                 }
                 KeyEvent.VK_S -> { viewModel.captureScreenshot(); true }
-                KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
+                KeyEvent.VK_ESCAPE -> when {
+                    latestSearchOpen.value -> {
+                        chatSearchOpen = false
+                        chatSearchQuery = ""
+                        true
+                    }
+                    m != PlayerMode.DEFAULT -> { shell.exitImmersive(); true }
+                    else -> false
+                }
                 // Skip back / forward. Auto-repeat scrubs, since AWT sends a fresh
                 // KEY_PRESSED per repeat. resetControls() rides along so a seek in
                 // an immersive mode brings the timecode back rather than leaving
@@ -298,6 +338,23 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
 
             if (isChatOpen) {
                 Column(Modifier.width(392.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val visibleChatMessages = remember(chatMessages, chatSearchQuery) {
+                        filterChatMessages(chatMessages, chatSearchQuery)
+                    }
+                    if (chatSearchOpen) {
+                        VodChatSearchBar(
+                            query = chatSearchQuery,
+                            resultCount = visibleChatMessages.size,
+                            onQueryChange = { chatSearchQuery = it },
+                            onClose = {
+                                chatSearchOpen = false
+                                chatSearchQuery = ""
+                            },
+                            focusRequester = chatSearchFocusRequester,
+                            onFocusChanged = { chatSearchFocused = it },
+                        )
+                    }
+
                     val listState = rememberLazyListState()
                     // Geometry only DETECTS the bottom; it does NOT gate auto-scroll.
                     var following by remember { mutableStateOf(true) }
@@ -311,8 +368,10 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                     // Auto-scroll on every new message while FOLLOWING: instant and intent-gated
                     // so it keeps up with VOD's bursty per-second batch appends (the bug: a batch
                     // makes the geometry read "not at bottom", which used to skip the scroll).
-                    LaunchedEffect(scrollAnchor(chatMessages)) {
-                        if (chatMessages.isNotEmpty() && following) listState.scrollToItem(chatMessages.lastIndex)
+                    LaunchedEffect(scrollAnchor(visibleChatMessages)) {
+                        if (visibleChatMessages.isNotEmpty() && following) {
+                            listState.scrollToItem(visibleChatMessages.lastIndex)
+                        }
                     }
                     // A user scroll away from the bottom pauses; reaching the bottom resumes.
                     LaunchedEffect(listState) {
@@ -328,7 +387,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                             contentPadding = PaddingValues(vertical = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            items(chatMessages, key = { it.id }) { msg: ChatMessage ->
+                            items(visibleChatMessages, key = { it.id }) { msg: ChatMessage ->
                                 ChatMessageRow(message = msg, showTimestamps = false)
                             }
                         }
@@ -346,7 +405,12 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                                         onClick = {
                                             // Guard scrollToItem(-1): a VOD backward seek can empty the
                                             // replay buffer while this pill is still shown (audit U3).
-                                            scope.launch { following = true; if (chatMessages.isNotEmpty()) listState.scrollToItem(chatMessages.lastIndex) }
+                                            scope.launch {
+                                                following = true
+                                                if (visibleChatMessages.isNotEmpty()) {
+                                                    listState.scrollToItem(visibleChatMessages.lastIndex)
+                                                }
+                                            }
                                         },
                                         restRadius = shapes.pill,
                                         hoverRadius = shapes.pillMorph,
@@ -365,6 +429,67 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun VodChatSearchBar(
+    query: String,
+    resultCount: Int,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    val c = PureTvTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(PlayerCardShape)
+            .background(c.surfaceContainer)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            ExpressiveIcons.Search,
+            contentDescription = null,
+            tint = c.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            if (query.isBlank()) {
+                Text(
+                    "Search replay chat · from:user · is:reply · has:link",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = c.onSurface),
+                cursorBrush = SolidColor(c.primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { onFocusChanged(it.isFocused) },
+            )
+        }
+        if (query.isNotBlank()) {
+            Text(resultCount.toString(), style = PureTvType.dataSmall, color = c.onSurfaceVariant)
+        }
+        ExpressiveIconButton(
+            icon = ExpressiveIcons.Close,
+            contentDescription = "Close search",
+            onClick = onClose,
+            boxSize = 36.dp,
+            iconSize = 18.dp,
+        )
     }
 }
 
