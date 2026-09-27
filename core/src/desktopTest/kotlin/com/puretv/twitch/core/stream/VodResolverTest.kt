@@ -1,5 +1,6 @@
 package com.puretv.twitch.core.stream
 
+import com.puretv.twitch.core.model.PlaylistVariant
 import com.puretv.twitch.core.model.StreamQuality
 import com.puretv.twitch.core.model.StreamToken
 import kotlin.test.Test
@@ -37,5 +38,31 @@ class VodResolverTest {
             "https://usher.ttvnw.net/vod/x.m3u8",
             VodResolver.playableUrlFor(realMaster(), StreamQuality.AUTO),
         )
+    }
+
+    @Test fun sourceFallsBackToHighestVariantWhenChunkedHintIsMissing() {
+        val master = MasterPlaylistResult(
+            masterUrl = "https://usher.ttvnw.net/vod/x.m3u8",
+            rawContent = "#EXTM3U",
+            variants = listOf(
+                PlaylistVariant(StreamQuality.P720P60, "1280x720", 60.0, 4_000_000, "https://cdn/720.m3u8"),
+                PlaylistVariant(StreamQuality.P1080P60, "1920x1080", 60.0, 7_500_000, "https://cdn/1080.m3u8"),
+            ),
+        )
+
+        assertEquals(
+            "https://cdn/1080.m3u8",
+            VodResolver.playableUrlFor(master, StreamQuality.SOURCE),
+        )
+    }
+
+    @Test fun highestQualityVariantPrefersResolutionThenFpsThenBandwidth() {
+        val variants = listOf(
+            PlaylistVariant(StreamQuality.P1080P60, "1920x1080", 30.0, 8_000_000, "https://cdn/a.m3u8"),
+            PlaylistVariant(StreamQuality.P1080P60, "1920x1080", 60.0, 6_000_000, "https://cdn/b.m3u8"),
+            PlaylistVariant(StreamQuality.P720P60, "1280x720", 60.0, 10_000_000, "https://cdn/c.m3u8"),
+        )
+
+        assertEquals("https://cdn/b.m3u8", HlsMasterParser.highestQualityVariant(variants)?.url)
     }
 }
