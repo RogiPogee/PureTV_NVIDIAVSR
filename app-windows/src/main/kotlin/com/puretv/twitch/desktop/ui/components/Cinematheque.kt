@@ -37,7 +37,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -367,6 +369,7 @@ fun ChatMessageRow(
 ) {
     val c = PureTvTheme.colors
     val clipboard = LocalClipboardManager.current
+    var replyExpanded by remember(message.id) { mutableStateOf(false) }
     val emoteCodes = remember(message.parsedParts, message.deleted, message.isSystem) {
         if (message.deleted || message.isSystem) {
             emptyList()
@@ -437,15 +440,39 @@ fun ChatMessageRow(
     rowModifier = rowModifier.padding(horizontal = 12.dp, vertical = 7.dp)
     Column(modifier = rowModifier) {
         val parentName = message.replyParentDisplayName
+        val parentBody = message.replyParentBody
         if (parentName != null) {
+            val replyHeaderModifier = Modifier
+                .padding(start = 2.dp, bottom = 1.dp)
+                .then(
+                    if (!parentBody.isNullOrBlank()) {
+                        Modifier.clickable { replyExpanded = !replyExpanded }
+                    } else {
+                        Modifier
+                    },
+                )
             Text(
-                "replying to @" + parentName,
+                if (!parentBody.isNullOrBlank()) {
+                    "replying to @" + parentName + if (replyExpanded) "  ▲" else "  ▼"
+                } else {
+                    "replying to @" + parentName
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = c.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 2.dp, bottom = 1.dp),
+                modifier = replyHeaderModifier,
             )
+            if (replyExpanded && !parentBody.isNullOrBlank()) {
+                Text(
+                    parentBody,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.onSurfaceVariant.copy(alpha = 0.82f),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 12.dp, end = 6.dp, bottom = 4.dp),
+                )
+            }
         }
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
