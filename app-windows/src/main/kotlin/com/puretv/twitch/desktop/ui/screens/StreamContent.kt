@@ -387,6 +387,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                                 // them back so moving the mouse reveals the controls,
                                 // including in fullscreen, where the surface covers all.
                                 onUserActivity = { resetControls() },
+                                hideCursor = mode == PlayerMode.FULLSCREEN && !controlsVisible,
                             )
                             else -> Text(
                                 if (state.isLoading) "Loading stream…" else "This channel is offline.",
