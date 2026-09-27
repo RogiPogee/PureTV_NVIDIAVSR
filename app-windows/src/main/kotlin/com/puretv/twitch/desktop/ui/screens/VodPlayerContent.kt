@@ -238,6 +238,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                             vlcPlayer = viewModel.player,
                             modifier = Modifier.fillMaxSize(),
                             onUserActivity = { resetControls() },
+                            hideCursor = mode == PlayerMode.FULLSCREEN && !controlsVisible,
                         )
                     }
                     if (state.loading && state.error == null) {
