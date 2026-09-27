@@ -222,8 +222,19 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
     val currentMode by rememberUpdatedState(mode)
 
     fun resetControls() {
-        controlsVisible = true
         hideJob?.cancel()
+
+        // Fullscreen is intentionally video-only. Mouse movement no longer
+        // remounts the top/controls bars, which previously resized the heavyweight
+        // VLC/mpv surface and could knock the native fullscreen bounds out of sync.
+        // Leave fullscreen with F/Esc (or the fullscreen button before entering)
+        // to get the full UI back.
+        if (currentMode == PlayerMode.FULLSCREEN) {
+            controlsVisible = false
+            return
+        }
+
+        controlsVisible = true
         if (currentMode != PlayerMode.DEFAULT) {
             hideJob = scope.launch {
                 delay(PureTvMotion.ControlsAutoHideMs)
@@ -366,7 +377,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                             val pos = event.changes.firstOrNull()?.position
                             if (pos != null && pos != lastPos) {
                                 lastPos = pos
-                                resetControls()
+                                if (currentMode != PlayerMode.FULLSCREEN) resetControls()
                             }
                         }
                     }
@@ -443,7 +454,9 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                                 // The heavyweight video surface eats mouse events; bridge
                                 // them back so moving the mouse reveals the controls,
                                 // including in fullscreen, where the surface covers all.
-                                onUserActivity = { resetControls() },
+                                onUserActivity = {
+                                    if (currentMode != PlayerMode.FULLSCREEN) resetControls()
+                                },
                                 hideCursor = (mode == PlayerMode.FULLSCREEN || mode == PlayerMode.COMPACT) && !controlsVisible,
                             )
                             else -> Text(
