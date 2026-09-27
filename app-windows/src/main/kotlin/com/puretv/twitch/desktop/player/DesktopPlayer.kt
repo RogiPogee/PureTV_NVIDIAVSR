@@ -33,6 +33,14 @@ interface DesktopPlayer {
     fun togglePlayPause()
     fun stop()
     fun seekTo(positionMs: Long)
+
+    /**
+     * Seeks a live stream to the newest point currently exposed by the backend.
+     * No-op when the current media is not seekable. This mirrors Twitch's
+     * "catch up to live" behavior after buffering/pausing has accumulated delay.
+     */
+    fun jumpToLive() {}
+
     fun setVolume(volume: Int)
     fun toggleMute()
 
