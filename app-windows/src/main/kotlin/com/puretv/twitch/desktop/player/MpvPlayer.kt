@@ -372,6 +372,14 @@ class MpvPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
         withCtx { l, c -> runCatching { l.mpv_command(c, arrayOf("seek", (positionMs.coerceAtLeast(0) / 1000.0).toString(), "absolute", null)) }; Unit }
     }
 
+    override fun jumpToLive() {
+        if (!_status.value.isSeekable) return
+        withCtx { l, c ->
+            runCatching { l.mpv_command(c, arrayOf("seek", "100", "absolute-percent", null)) }
+            Unit
+        }
+    }
+
     override fun setVolume(volume: Int) {
         val next = applyVolumeChange(VolumeState(_status.value.volume, _status.value.isMuted, preMuteVolume), volume)
         preMuteVolume = next.preMute
