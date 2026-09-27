@@ -171,7 +171,7 @@ class AppShellController(
         )
         isChatOpenState = false
         windowState.placement = WindowPlacement.Floating
-        windowState.size = DpSize(720.dp, 480.dp)
+        windowState.size = DpSize(720.dp, 533.dp)
         (window as? Frame)?.extendedState = Frame.NORMAL
         setAlwaysOnTop(true)
     }
