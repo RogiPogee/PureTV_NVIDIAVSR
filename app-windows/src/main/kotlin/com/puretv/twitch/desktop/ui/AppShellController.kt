@@ -49,6 +49,9 @@ class AppShellController(
     private var isChatOpenState by mutableStateOf(true)
     val isChatOpen: Boolean get() = isChatOpenState
 
+    private var alwaysOnTopState by mutableStateOf(window.isAlwaysOnTop)
+    val isAlwaysOnTop: Boolean get() = alwaysOnTopState
+
     /** Pre-fullscreen geometry, captured on entry and replayed on exit. */
     private data class FullscreenRestore(
         val placement: WindowPlacement,
@@ -134,6 +137,15 @@ class AppShellController(
     }
 
     fun toggleChat() { isChatOpenState = !isChatOpenState }
+
+    fun setAlwaysOnTop(enabled: Boolean) {
+        if (alwaysOnTopState == enabled) return
+        if (runCatching { window.isAlwaysOnTop = enabled }.isSuccess) {
+            alwaysOnTopState = enabled
+        }
+    }
+
+    fun toggleAlwaysOnTop() = setAlwaysOnTop(!alwaysOnTopState)
 
     fun exitImmersive() {
         if (playerMode != PlayerMode.DEFAULT) setPlayerMode(PlayerMode.DEFAULT)
