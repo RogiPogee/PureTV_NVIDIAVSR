@@ -155,7 +155,9 @@ private val CHAT_PANEL_RADIUS = 24.dp
  *   F      toggle fullscreen      T  toggle theater
  *   C      toggle chat            Space  play/pause
  *   L      jump to live           P      pin/unpin window
- *   F3     upscaling stats (mpv)  Esc    exit immersive
+ *   M      compact mini-player    S      native screenshot
+ *   Ctrl+F search chat            F3     upscaling stats (mpv)
+ *   Esc    exit immersive
  */
 @Composable
 fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onRequestSignIn: () -> Unit = {}) {
@@ -176,6 +178,14 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
             .map { it.copy(positionMs = 0L, durationMs = 0L) }
             .distinctUntilChanged()
     }.collectAsState(initial = vlcPlayer.status.value.copy(positionMs = 0L, durationMs = 0L))
+    // Keep the latency readout isolated from the main PlayerStatus projection so
+    // video time ticks do not recompose the whole player/chat tree. Only a changed
+    // formatted delay label publishes a new Compose value.
+    val liveDelayLabel by remember(vlcPlayer) {
+        vlcPlayer.status
+            .map { formatLiveDelay(liveDelayMs(it)) }
+            .distinctUntilChanged()
+    }.collectAsState(initial = formatLiveDelay(liveDelayMs(vlcPlayer.status.value)))
     val settingsStore = remember { koin.get<DesktopSettingsStore>() }
     val appSettings by settingsStore.settings.collectAsState()
     val shell = LocalAppShell.current
@@ -233,9 +243,21 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
     // never die. We skip it while the chat input is focused so typing, including
     // spaces and the letters f/t/c, still reaches the chat box.
     var chatInputFocused by remember { mutableStateOf(false) }
+    var chatSearchOpen by remember { mutableStateOf(false) }
+    var chatSearchQuery by remember { mutableStateOf("") }
+    var chatSearchFocused by remember { mutableStateOf(false) }
+    val chatSearchFocusRequester = remember { FocusRequester() }
     val latestMode = rememberUpdatedState(mode)
     val latestChatFocused = rememberUpdatedState(chatInputFocused)
+    val latestSearchFocused = rememberUpdatedState(chatSearchFocused)
+    val latestSearchOpen = rememberUpdatedState(chatSearchOpen)
     val latestUpscaling = rememberUpdatedState(appSettings.upscalingMode)
+
+    LaunchedEffect(chatSearchOpen, isChatOpen) {
+        if (chatSearchOpen && isChatOpen) {
+            runCatching { chatSearchFocusRequester.requestFocus() }
+        }
+    }
     // F3 toggles the mpv upscaling stats overlay. It's drawn by mpv's own OSD (the
     // heavyweight video Canvas paints above Compose, so a Compose overlay can't sit
     // on the video). No-op on the VLC backend.
@@ -244,6 +266,21 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
     var settingsMenuOpen by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         val dispatcher = KeyEventDispatcher { e ->
+            // Ctrl+F is global even while the composer owns focus: open the chat
+            // search panel and move keyboard focus into it.
+            if (e.id == KeyEvent.KEY_PRESSED && e.keyCode == KeyEvent.VK_F && e.isControlDown) {
+                if (!shell.isChatOpen) shell.toggleChat()
+                chatSearchOpen = true
+                return@KeyEventDispatcher true
+            }
+            if (latestSearchFocused.value) {
+                if (e.id == KeyEvent.KEY_PRESSED && e.keyCode == KeyEvent.VK_ESCAPE) {
+                    chatSearchOpen = false
+                    chatSearchQuery = ""
+                    return@KeyEventDispatcher true
+                }
+                return@KeyEventDispatcher false
+            }
             if (latestChatFocused.value) return@KeyEventDispatcher false
             // Hold-to-compare (X): preview Off while held, restore the saved mode on
             // release: instant live A/B of the upscaler. Handled before the
@@ -267,9 +304,21 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                 KeyEvent.VK_SPACE -> { viewModel.togglePlayPause(); true }
                 KeyEvent.VK_L -> { viewModel.jumpToLive(); true }
                 KeyEvent.VK_P -> { shell.toggleAlwaysOnTop(); true }
-                // Esc only acts when immersive, so it doesn't swallow a stray Esc
-                // elsewhere; in DEFAULT mode it passes through untouched.
-                KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
+                KeyEvent.VK_M -> {
+                    shell.setPlayerMode(if (m == PlayerMode.COMPACT) PlayerMode.DEFAULT else PlayerMode.COMPACT)
+                    true
+                }
+                KeyEvent.VK_S -> { viewModel.captureScreenshot(); true }
+                // Escape closes search first, then immersive mode.
+                KeyEvent.VK_ESCAPE -> when {
+                    latestSearchOpen.value -> {
+                        chatSearchOpen = false
+                        chatSearchQuery = ""
+                        true
+                    }
+                    m != PlayerMode.DEFAULT -> { shell.exitImmersive(); true }
+                    else -> false
+                }
                 KeyEvent.VK_F3 -> { showStats = !showStats; true }
                 else -> false
             }
@@ -395,7 +444,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                                 // them back so moving the mouse reveals the controls,
                                 // including in fullscreen, where the surface covers all.
                                 onUserActivity = { resetControls() },
-                                hideCursor = mode == PlayerMode.FULLSCREEN && !controlsVisible,
+                                hideCursor = (mode == PlayerMode.FULLSCREEN || mode == PlayerMode.COMPACT) && !controlsVisible,
                             )
                             else -> Text(
                                 if (state.isLoading) "Loading stream…" else "This channel is offline.",
@@ -439,6 +488,9 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                         volume = playerStatus.volume,
                         isMuted = playerStatus.isMuted,
                         currentQuality = state.currentQuality,
+                        recoveryFallbackActive = state.recoveryFallbackActive,
+                        liveDelayLabel = liveDelayLabel,
+                        screenshotNotice = state.screenshotNotice,
                         settingsOpen = settingsMenuOpen,
                         mode = mode,
                         isChatOpen = isChatOpen,
@@ -446,9 +498,11 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                         onVolumeChange = viewModel::setVolume,
                         onToggleMute = viewModel::toggleMute,
                         onJumpToLive = viewModel::jumpToLive,
+                        onScreenshot = viewModel::captureScreenshot,
                         onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
                         onToggleChat = { shell.toggleChat() },
                         onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
+                        onToggleCompact = { shell.setPlayerMode(if (mode == PlayerMode.COMPACT) PlayerMode.DEFAULT else PlayerMode.COMPACT) },
                         onToggleFullscreen = { shell.setPlayerMode(if (mode == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN) },
                         radius = panelRadius,
                     )
@@ -475,8 +529,30 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                         selected = chatTab,
                         mentionCount = state.mentionMessages.size,
                         onSelectTab = { chatTab = it },
+                        onSearch = { chatSearchOpen = !chatSearchOpen },
+                        searchOpen = chatSearchOpen,
                         onClose = { shell.toggleChat() },
                     )
+
+                    val baseMessages =
+                        if (chatTab == ChatTab.Chat) state.chatMessages else state.mentionMessages
+                    val visibleMessages = remember(baseMessages, chatSearchQuery) {
+                        filterChatMessages(baseMessages, chatSearchQuery)
+                    }
+
+                    if (chatSearchOpen) {
+                        ChatSearchBar(
+                            query = chatSearchQuery,
+                            resultCount = visibleMessages.size,
+                            onQueryChange = { chatSearchQuery = it },
+                            onClose = {
+                                chatSearchOpen = false
+                                chatSearchQuery = ""
+                            },
+                            focusRequester = chatSearchFocusRequester,
+                            onFocusChanged = { chatSearchFocused = it },
+                        )
+                    }
 
                     Box(
                         modifier = Modifier
@@ -486,22 +562,22 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                             .background(c.surfaceContainer),
                     ) {
                         CompositionLocalProvider(LocalBadgeIndex provides state.badges) {
-                            when (chatTab) {
-                                ChatTab.Chat -> ChatMessageList(
-                                    messages = state.chatMessages,
+                            when {
+                                baseMessages.isEmpty() && chatTab == ChatTab.Mentions ->
+                                    MentionsEmptyState(Modifier.fillMaxSize())
+                                visibleMessages.isEmpty() && chatSearchQuery.isNotBlank() ->
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            "No chat matches",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = c.onSurfaceVariant,
+                                        )
+                                    }
+                                else -> ChatMessageList(
+                                    messages = visibleMessages,
                                     onReply = viewModel::startReply,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                ChatTab.Mentions ->
-                                    if (state.mentionMessages.isEmpty()) {
-                                        MentionsEmptyState(Modifier.fillMaxSize())
-                                    } else {
-                                        ChatMessageList(
-                                            messages = state.mentionMessages,
-                                            onReply = viewModel::startReply,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
                             }
                         }
                     }
