@@ -106,7 +106,8 @@ private const val SeekStepLargeMs = 30_000L
  *
  *   F      toggle fullscreen      T          toggle theater
  *   C      toggle chat            Space      play/pause
- *   Esc    exit immersive         Left/Right skip 10s (Shift: 30s)
+ *   P      pin/unpin window       Esc        exit immersive
+ *   Left/Right skip 10s (Shift: 30s)
  */
 @Composable
 fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
@@ -158,6 +159,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                 KeyEvent.VK_T -> { shell.setPlayerMode(if (m == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER); true }
                 KeyEvent.VK_C -> { shell.toggleChat(); true }
                 KeyEvent.VK_SPACE -> { viewModel.togglePlayPause(); true }
+                KeyEvent.VK_P -> { shell.toggleAlwaysOnTop(); true }
                 KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
                 // Skip back / forward. Auto-repeat scrubs, since AWT sends a fresh
                 // KEY_PRESSED per repeat. resetControls() rides along so a seek in
@@ -261,6 +263,8 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                         activeBackend = viewModel.player.backend,
                         selectedBackend = appSettings.playbackBackend,
                         onBackendSelected = viewModel::setPlaybackBackend,
+                        alwaysOnTop = shell.isAlwaysOnTop,
+                        onAlwaysOnTopSelected = shell::setAlwaysOnTop,
                     )
                 }
 
