@@ -91,7 +91,7 @@ fun SettingsContent(koin: Koin, onExit: () -> Unit) {
         PlaybackPanel(
             selectedQuality = StreamQuality.entries.firstOrNull {
                 state.settings.preferredQuality.equals(it.name, ignoreCase = true)
-            } ?: StreamQuality.AUTO,
+            } ?: StreamQuality.SOURCE,
             onSelectQuality = viewModel::setPreferredQuality,
             animateEmotes = state.settings.animateEmotes,
             onAnimateEmotesChange = viewModel::setAnimateEmotes,
