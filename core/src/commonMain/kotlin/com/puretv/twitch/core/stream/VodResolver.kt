@@ -66,7 +66,11 @@ class VodResolver(
          */
         fun playableUrlFor(master: MasterPlaylistResult, quality: StreamQuality): String {
             if (quality == StreamQuality.AUTO) return master.masterUrl
-            return master.variants.firstOrNull { it.quality == quality }?.url ?: master.masterUrl
+            master.variants.firstOrNull { it.quality == quality }?.let { return it.url }
+            if (quality == StreamQuality.SOURCE) {
+                HlsMasterParser.highestQualityVariant(master.variants)?.let { return it.url }
+            }
+            return master.masterUrl
         }
     }
 }
