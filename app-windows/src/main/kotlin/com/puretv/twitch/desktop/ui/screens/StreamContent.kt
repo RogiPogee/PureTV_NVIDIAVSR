@@ -669,6 +669,9 @@ private fun PlaybackControls(
     volume: Int,
     isMuted: Boolean,
     currentQuality: StreamQuality,
+    recoveryFallbackActive: Boolean,
+    liveDelayLabel: String?,
+    screenshotNotice: String?,
     settingsOpen: Boolean,
     mode: PlayerMode,
     isChatOpen: Boolean,
@@ -676,13 +679,20 @@ private fun PlaybackControls(
     onVolumeChange: (Int) -> Unit,
     onToggleMute: () -> Unit,
     onJumpToLive: () -> Unit,
+    onScreenshot: () -> Unit,
     onToggleSettings: () -> Unit,
     onToggleChat: () -> Unit,
     onToggleTheater: () -> Unit,
+    onToggleCompact: () -> Unit,
     onToggleFullscreen: () -> Unit,
     radius: Dp,
 ) {
     val c = PureTvTheme.colors
+    val liveTrailing = buildString {
+        append(currentQuality.label)
+        if (recoveryFallbackActive) append(" fallback")
+        liveDelayLabel?.let { append(" · ").append(it) }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -695,28 +705,61 @@ private fun PlaybackControls(
     ) {
         PlayPauseButton(isPlaying = isPlaying, onClick = onTogglePlayPause)
         VolumeButton(isMuted = isMuted || volume == 0, onClick = onToggleMute)
-        ExpressiveSlider(
-            value = volume / 100f,
-            onValueChange = { onVolumeChange((it * 100f).roundToInt()) },
-            modifier = Modifier.width(150.dp).padding(horizontal = 10.dp),
-        )
+
+        if (mode != PlayerMode.COMPACT) {
+            ExpressiveSlider(
+                value = volume / 100f,
+                onValueChange = { onVolumeChange((it * 100f).roundToInt()) },
+                modifier = Modifier.width(150.dp).padding(horizontal = 10.dp),
+            )
+            screenshotNotice?.let {
+                Text(
+                    it,
+                    style = PureTvType.dataSmall,
+                    color = c.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+
         Spacer(Modifier.weight(1f))
-        // Also acts as "catch up to live". The quality suffix makes the player's
-        // lock state visible at a glance without opening the settings menu.
+        // Also acts as "catch up to live". The suffix shows actual quality and
+        // player-buffer delay; when recovery temporarily drops Source it is explicit.
         LivePill(
-            trailing = currentQuality.label,
+            trailing = liveTrailing,
             onClick = onJumpToLive,
         )
         Spacer(Modifier.width(8.dp))
-        ConnectedControlsGroup(
-            settingsOpen = settingsOpen,
-            isChatOpen = isChatOpen,
-            mode = mode,
-            onToggleSettings = onToggleSettings,
-            onToggleChat = onToggleChat,
-            onToggleTheater = onToggleTheater,
-            onToggleFullscreen = onToggleFullscreen,
-        )
+
+        if (mode == PlayerMode.COMPACT) {
+            Row(
+                modifier = Modifier
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(c.surfaceHigh),
+            ) {
+                ControlsGroupButton(ExpressiveIcons.Camera, "Save screenshot", onScreenshot)
+                GroupDivider()
+                ControlsGroupButton(
+                    ExpressiveIcons.PictureInPicture,
+                    "Exit mini-player",
+                    onToggleCompact,
+                    tint = c.primary,
+                )
+            }
+        } else {
+            ConnectedControlsGroup(
+                settingsOpen = settingsOpen,
+                isChatOpen = isChatOpen,
+                mode = mode,
+                onToggleSettings = onToggleSettings,
+                onToggleChat = onToggleChat,
+                onToggleTheater = onToggleTheater,
+                onScreenshot = onScreenshot,
+                onToggleCompact = onToggleCompact,
+                onToggleFullscreen = onToggleFullscreen,
+            )
+        }
     }
 }
 
@@ -786,6 +829,8 @@ private fun ConnectedControlsGroup(
     onToggleSettings: () -> Unit,
     onToggleChat: () -> Unit,
     onToggleTheater: () -> Unit,
+    onScreenshot: () -> Unit,
+    onToggleCompact: () -> Unit,
     onToggleFullscreen: () -> Unit,
 ) {
     val c = PureTvTheme.colors
@@ -805,6 +850,15 @@ private fun ConnectedControlsGroup(
         ControlsGroupButton(ExpressiveIcons.Chat, "Toggle chat", onToggleChat, tint = if (isChatOpen) c.primary else null)
         GroupDivider()
         ControlsGroupButton(ExpressiveIcons.AspectRatio, "Theater mode", onToggleTheater, tint = if (mode == PlayerMode.THEATER) c.primary else null)
+        GroupDivider()
+        ControlsGroupButton(ExpressiveIcons.Camera, "Save screenshot", onScreenshot)
+        GroupDivider()
+        ControlsGroupButton(
+            ExpressiveIcons.PictureInPicture,
+            "Mini-player",
+            onToggleCompact,
+            tint = if (mode == PlayerMode.COMPACT) c.primary else null,
+        )
         GroupDivider()
         ControlsGroupButton(
             icon = if (mode == PlayerMode.FULLSCREEN) ExpressiveIcons.FullscreenExit else ExpressiveIcons.Fullscreen,
@@ -856,6 +910,8 @@ private fun ChatHeader(
     selected: ChatTab,
     mentionCount: Int,
     onSelectTab: (ChatTab) -> Unit,
+    onSearch: () -> Unit,
+    searchOpen: Boolean,
     onClose: () -> Unit,
 ) {
     val c = PureTvTheme.colors
@@ -871,11 +927,84 @@ private fun ChatHeader(
     ) {
         ChatTabToggle(selected = selected, mentionCount = mentionCount, onSelect = onSelectTab, modifier = Modifier.weight(1f))
         ExpressiveIconButton(
+            icon = ExpressiveIcons.Search,
+            contentDescription = "Search chat",
+            onClick = onSearch,
+            style = if (searchOpen) ExpressiveButtonStyle.Tonal else ExpressiveButtonStyle.Text,
+            boxSize = 48.dp,
+            iconSize = 22.dp,
+        )
+        ExpressiveIconButton(
             icon = ExpressiveIcons.Close,
             contentDescription = "Close chat",
             onClick = onClose,
             boxSize = 48.dp,
             iconSize = 22.dp,
+        )
+    }
+}
+
+@Composable
+private fun ChatSearchBar(
+    query: String,
+    resultCount: Int,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    val c = PureTvTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(CHAT_PANEL_RADIUS))
+            .background(c.surfaceContainer)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            ExpressiveIcons.Search,
+            contentDescription = null,
+            tint = c.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            if (query.isBlank()) {
+                Text(
+                    "Search chat · from:user · is:reply · has:link",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = c.onSurface),
+                cursorBrush = SolidColor(c.primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { onFocusChanged(it.isFocused) },
+            )
+        }
+        if (query.isNotBlank()) {
+            Text(
+                resultCount.toString(),
+                style = PureTvType.dataSmall,
+                color = c.onSurfaceVariant,
+            )
+        }
+        ExpressiveIconButton(
+            icon = ExpressiveIcons.Close,
+            contentDescription = "Close search",
+            onClick = onClose,
+            boxSize = 36.dp,
+            iconSize = 18.dp,
         )
     }
 }
