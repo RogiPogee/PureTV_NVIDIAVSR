@@ -26,4 +26,44 @@ class SevenTvEmoteParseTest {
         assertEquals(true, e.animated)
         assertEquals("https://cdn.7tv.app/emote/60a/4x.webp", e.url)
     }
+
+    @Test fun usesAdvertisedWebpInsteadOfAssumingStaticPngExists() {
+        val e = obj(
+            """{
+                "id":"abc",
+                "name":"WidePeepo",
+                "flags":0,
+                "data":{
+                    "animated":false,
+                    "flags":0,
+                    "host":{
+                        "url":"//cdn.7tv.app/emote/abc",
+                        "files":[
+                            {"name":"1x.webp"},
+                            {"name":"2x.webp"},
+                            {"name":"4x.webp"}
+                        ]
+                    }
+                }
+            }""",
+        ).toSevenTvEmote()
+        assertEquals("https://cdn.7tv.app/emote/abc/4x.webp", e.url)
+    }
+
+    @Test fun choosesHighestAdvertisedScale() {
+        val e = obj(
+            """{
+                "id":"xyz",
+                "name":"OnlySmaller",
+                "data":{
+                    "animated":false,
+                    "host":{
+                        "url":"https://cdn.7tv.app/emote/xyz/",
+                        "files":[{"name":"1x.webp"},{"name":"3x.webp"}]
+                    }
+                }
+            }""",
+        ).toSevenTvEmote()
+        assertEquals("https://cdn.7tv.app/emote/xyz/3x.webp", e.url)
+    }
 }
