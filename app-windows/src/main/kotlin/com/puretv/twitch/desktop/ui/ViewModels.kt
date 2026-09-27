@@ -42,7 +42,8 @@ import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.data.FollowStore
 import com.puretv.twitch.desktop.data.FollowedChannel
 import com.puretv.twitch.desktop.player.LocalStreamProxy
-import com.puretv.twitch.desktop.player.PlaybackStallWatchdog
+import com.puretv.twitch.desktop.player.PlaybackRecoveryAction
+import com.puretv.twitch.desktop.player.PlaybackRecoveryController
 import com.puretv.twitch.desktop.player.ProxyUnavailableException
 import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.ui.chat.ChatModeration
@@ -290,6 +291,9 @@ data class StreamUiState(
     val streamInfo: StreamInfo? = null,
     val playableUrl: String? = null,
     val currentQuality: StreamQuality = StreamQuality.SOURCE,
+    /** User-selected quality. [currentQuality] may temporarily be a recovery fallback. */
+    val preferredQuality: StreamQuality = StreamQuality.SOURCE,
+    val recoveryFallbackActive: Boolean = false,
     val adBlockStatus: AdBlockStatus = AdBlockStatus.UNKNOWN,
     val chatMessages: List<ChatMessage> = emptyList(),
     /** Messages that @-mention the local viewer, kept in their own buffer so the
@@ -334,7 +338,7 @@ class StreamViewModel(
     private var selfBadges: List<Badge> = emptyList()
     private var echoCounter = 0
     private var systemCounter = 0
-    private val playbackStallWatchdog = PlaybackStallWatchdog()
+    private val playbackRecovery = PlaybackRecoveryController()
 
     // Written on the emote-load coroutine, read on the chat-collect + send paths.
     // Safe as a @Volatile reference because the map is immutable after publish:
@@ -394,7 +398,14 @@ class StreamViewModel(
             }.getOrDefault(StreamQuality.SOURCE)
 
             _state.update {
-                it.copy(channel = channel, streamInfo = liveInfo, currentQuality = preferredQuality, isLoading = false)
+                it.copy(
+                    channel = channel,
+                    streamInfo = liveInfo,
+                    currentQuality = preferredQuality,
+                    preferredQuality = preferredQuality,
+                    recoveryFallbackActive = false,
+                    isLoading = false,
+                )
             }
 
             // Badge art only needs the channel id, not the emote lists below, so fetch it
@@ -451,19 +462,36 @@ class StreamViewModel(
             adBlockEngine.status.collect { status -> _state.update { it.copy(adBlockStatus = status) } }
         }
         scope.launch {
-            // libVLC can remain in PLAYING after its HLS demuxer has stopped
-            // advancing, so no error callback reaches the UI. Detect that exact
-            // state and perform the same fresh local-URL load that previously
-            // required leaving and re-entering the stream manually.
+            // Self-healing live playback. One fault reloads the current stream;
+            // repeated Source faults temporarily fall back to 720p60, then Source
+            // is retried automatically after a sustained healthy window.
             while (true) {
                 delay(2_000)
-                val url = _state.value.playableUrl
-                if (url == null) {
-                    playbackStallWatchdog.reset()
+                val st = _state.value
+                if (st.playableUrl == null) {
+                    playbackRecovery.reset()
                     continue
                 }
-                if (playbackStallWatchdog.sample(vlcPlayer.status.value, System.currentTimeMillis())) {
-                    vlcPlayer.play(url)
+                when (
+                    playbackRecovery.sample(
+                        status = vlcPlayer.status.value,
+                        preferredQuality = st.preferredQuality,
+                        currentQuality = st.currentQuality,
+                        nowMs = System.currentTimeMillis(),
+                    )
+                ) {
+                    PlaybackRecoveryAction.NONE -> Unit
+                    PlaybackRecoveryAction.RELOAD_CURRENT -> {
+                        // Rebuild the local URL instead of replaying a stale object;
+                        // /stream mints a fresh Twitch playback token/playlist.
+                        playAt(st.currentQuality, recoveryFallback = st.recoveryFallbackActive)
+                    }
+                    PlaybackRecoveryAction.FALLBACK_720P -> {
+                        playAt(StreamQuality.P720P60, recoveryFallback = true)
+                    }
+                    PlaybackRecoveryAction.RESTORE_SOURCE -> {
+                        playAt(StreamQuality.SOURCE, recoveryFallback = false)
+                    }
                 }
             }
         }
@@ -527,16 +555,23 @@ class StreamViewModel(
         }
     }
 
-    private fun playAt(quality: StreamQuality) {
+    private fun playAt(quality: StreamQuality, recoveryFallback: Boolean = false) {
         val url = LocalStreamProxy.streamUrl(channelLogin, quality)
-        playbackStallWatchdog.reset()
-        _state.update { it.copy(playableUrl = url, currentQuality = quality) }
+        _state.update {
+            it.copy(
+                playableUrl = url,
+                currentQuality = quality,
+                recoveryFallbackActive = recoveryFallback,
+            )
+        }
         vlcPlayer.play(url)
     }
 
     fun setQuality(quality: StreamQuality) {
         settingsStore.updateSettings { it.copy(preferredQuality = quality.name.lowercase()) }
-        playAt(quality)
+        playbackRecovery.reset()
+        _state.update { it.copy(preferredQuality = quality, recoveryFallbackActive = false) }
+        playAt(quality, recoveryFallback = false)
     }
 
     /** Live-apply the scaler to the running player AND persist it. The whole point:
