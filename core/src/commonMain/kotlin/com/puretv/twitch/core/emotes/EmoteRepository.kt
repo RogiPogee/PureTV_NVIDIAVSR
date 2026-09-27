@@ -177,7 +177,15 @@ internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
     val advertisedFiles = host?.get("files")?.jsonArray.orEmpty().mapNotNull { file ->
         runCatching { file.jsonObject["name"]?.jsonPrimitive?.contentOrNull }.getOrNull()
     }
-    val bestFile = advertisedFiles.maxByOrNull(::sevenTvAssetScore) ?: "4x.webp"
+
+    // Chat renders emotes at roughly 28dp. Pulling 4x assets for every first-use
+    // emote was visually indistinguishable at that size but noticeably slower,
+    // especially for animated WebP where download + decode cost scales with pixel
+    // count. Prefer 2x for animated emotes and 3x for static emotes, falling back
+    // to the nearest advertised WebP scale. This keeps them crisp on HiDPI while
+    // cutting first-load latency and decode work substantially.
+    val bestFile = selectSevenTvAsset(advertisedFiles, animated)
+        ?: if (animated) "2x.webp" else "3x.webp"
 
     // 7TV marks overlays two ways across its API surface.
     val activeFlags = this["flags"]?.jsonPrimitive?.intOrNull ?: 0
@@ -193,16 +201,30 @@ internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
     )
 }
 
-private fun sevenTvAssetScore(fileName: String): Int {
-    val scale = Regex("""^(\d+)x\.""").find(fileName)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-    val format = when (fileName.substringAfterLast('.', "").lowercase()) {
-        "webp" -> 4
-        "gif" -> 3
-        "png" -> 2
-        "avif" -> 1
-        else -> 0
+internal fun selectSevenTvAsset(files: List<String>, animated: Boolean): String? {
+    val targetScale = if (animated) 2 else 3
+    val candidates = files.mapNotNull { file ->
+        val scale = Regex("""^(\d+)x\.""").find(file)?.groupValues?.get(1)?.toIntOrNull()
+            ?: return@mapNotNull null
+        val formatRank = when (file.substringAfterLast('.', "").lowercase()) {
+            "webp" -> 0
+            "gif" -> 1
+            "png" -> 2
+            "avif" -> 3
+            else -> 4
+        }
+        Triple(file, scale, formatRank)
     }
-    return scale * 100 + format
+    if (candidates.isEmpty()) return null
+
+    return candidates.minWithOrNull(
+        compareBy<Triple<String, Int, Int>> { kotlin.math.abs(it.second - targetScale) }
+            // At equal distance, keep the sharper scale rather than dropping lower.
+            .thenByDescending { it.second }
+            // Prefer WebP because our desktop path handles it reliably for static
+            // and animated emotes and it is typically smaller than GIF/PNG.
+            .thenBy { it.third },
+    )?.first
 }
 
 /**
