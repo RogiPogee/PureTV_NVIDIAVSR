@@ -59,6 +59,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -86,6 +88,8 @@ import com.puretv.twitch.core.model.UpscalingMode
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.player.VlcPlayerView
+import com.puretv.twitch.desktop.player.formatLiveDelay
+import com.puretv.twitch.desktop.player.liveDelayMs
 import com.puretv.twitch.desktop.ui.LocalAppShell
 import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.StreamViewModel
@@ -94,6 +98,7 @@ import com.puretv.twitch.desktop.ui.chat.completeWord
 import com.puretv.twitch.desktop.ui.chat.composerKeyAction
 import com.puretv.twitch.desktop.ui.chat.insertAtCursor
 import com.puretv.twitch.desktop.ui.chat.matchEmotes
+import com.puretv.twitch.desktop.ui.chat.filterChatMessages
 import com.puretv.twitch.desktop.ui.chat.nextFollowing
 import com.puretv.twitch.desktop.ui.chat.scrollAnchor
 import com.puretv.twitch.desktop.ui.chat.wordAtCursor
