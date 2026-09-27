@@ -430,21 +430,14 @@ class LocalStreamProxy(
      * All header/tag lines (including `#EXTM3U`, `#EXT-X-TWITCH-INFO`,
      * `#EXT-X-MEDIA`) are preserved so VLC still parses a valid HLS master.
      *
-     * Falls back to the unfiltered master if no exact match is found (e.g.
-     * the requested quality isn't available for this broadcaster).
+     * If Twitch omits the exact named rung, fixed-resolution requests choose
+     * the closest available rung at or below the target. Source always resolves
+     * to the highest-fidelity variant. Only an unresolvable request falls back
+     * to the unfiltered master.
      */
     private fun filterMasterToQuality(masterPlaylist: String, quality: StreamQuality): String {
         val variants = HlsMasterParser.parseVariants(masterPlaylist)
-        val selectedUrl = variants.firstOrNull { it.quality == quality }?.url
-            ?: if (quality == StreamQuality.SOURCE) {
-                // "Source" must stay highest-fidelity even when Twitch omits the
-                // usual VIDEO="chunked" marker. Do not fall back to the adaptive
-                // master here because VLC can then silently choose a lower rung.
-                HlsMasterParser.highestQualityVariant(variants)?.url
-            } else {
-                null
-            }
-            ?: return masterPlaylist
+        val selectedUrl = selectPlaybackVariant(variants, quality)?.url ?: return masterPlaylist
 
         val lines = masterPlaylist.lines()
         val out = StringBuilder(masterPlaylist.length)
