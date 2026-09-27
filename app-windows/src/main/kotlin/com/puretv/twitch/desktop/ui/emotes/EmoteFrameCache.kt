@@ -69,18 +69,15 @@ class EmoteFrameCache(
 
     /** Decoded frames for [url], or null if static / undecodable. Caches success + static. */
     suspend fun frames(url: String): AnimatedEmoteFrames? {
-        val flight: CompletableDeferred<AnimatedEmoteFrames?>
-        val owner: Boolean
-        synchronized(lock) {
+        val (flight, owner) = synchronized(lock) {
             if (cache.containsKey(url)) return cache[url]
             val existing = inFlight[url]
             if (existing != null) {
-                flight = existing
-                owner = false
+                existing to false
             } else {
-                flight = CompletableDeferred()
-                inFlight[url] = flight
-                owner = true
+                val created = CompletableDeferred<AnimatedEmoteFrames?>()
+                inFlight[url] = created
+                created to true
             }
         }
 
