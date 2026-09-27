@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
@@ -91,6 +93,7 @@ object ExpressiveIcons {
     val Notify: ImageVector = Icons.Filled.NotificationsNone
     val Refresh: ImageVector = Icons.Filled.Refresh
     val Download: ImageVector = Icons.Filled.Download
+    val Camera: ImageVector = Icons.Filled.CameraAlt
     val OpenInNew: ImageVector = Icons.Filled.OpenInNew
     val SignIn: ImageVector = Icons.AutoMirrored.Filled.Login
     val SignOut: ImageVector = Icons.AutoMirrored.Filled.Logout
@@ -103,6 +106,7 @@ object ExpressiveIcons {
     val AspectRatio: ImageVector = Icons.Filled.AspectRatio
     val Fullscreen: ImageVector = Icons.Filled.Fullscreen
     val FullscreenExit: ImageVector = Icons.Filled.FullscreenExit
+    val PictureInPicture: ImageVector = Icons.Filled.PictureInPictureAlt
     val Chat: ImageVector = Icons.AutoMirrored.Filled.Chat
     val Emote: ImageVector = Icons.Filled.Mood
     val Send: ImageVector = Icons.AutoMirrored.Filled.Send
