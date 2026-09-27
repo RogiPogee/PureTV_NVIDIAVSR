@@ -134,11 +134,25 @@ class EmoteRepository(
     }
 
     private suspend fun fetchSevenTvChannel(channelId: String): List<ChannelEmote> {
-        val raw: JsonObject = httpClient.get("https://7tv.io/v3/users/twitch/$channelId").body()
-        val emoteSet = raw["emote_set"]?.jsonObject ?: return emptyList()
-        return emoteSet["emotes"]?.jsonArray.orEmpty()
-            .mapNotNull { runCatching { it.jsonObject.toSevenTvEmote() }.getOrNull() } // skip malformed entries (audit L6)
+        val user: JsonObject = httpClient.get("https://7tv.io/v3/users/twitch/$channelId").body()
+        val embeddedSet = user["emote_set"]?.jsonObject ?: return emptyList()
+
+        // Fetch the emote set itself by id so the picker gets the complete,
+        // authoritative active set. Fall back to the embedded user payload.
+        val setId = embeddedSet["id"]?.jsonPrimitive?.contentOrNull
+        val fullSet = if (setId.isNullOrBlank()) {
+            embeddedSet
+        } else {
+            runCatching {
+                httpClient.get("https://7tv.io/v3/emote-sets/$setId").body<JsonObject>()
+            }.getOrNull() ?: embeddedSet
+        }
+        return parseSevenTvSet(fullSet)
     }
+
+    private fun parseSevenTvSet(set: JsonObject): List<ChannelEmote> =
+        set["emotes"]?.jsonArray.orEmpty()
+            .mapNotNull { runCatching { it.jsonObject.toSevenTvEmote() }.getOrNull() }
 }
 
 internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
@@ -146,19 +160,49 @@ internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
     val name = this["name"]!!.jsonPrimitive.content
     val data = this["data"]?.jsonObject
     val animated = data?.get("animated")?.jsonPrimitive?.boolean ?: false
-    // 7TV marks overlays two ways across its API surface: the active-emote
-    // `flags` bit 0, or the emote `data.flags` bit 8 (256). Treat either as zero-width.
+
+    // Use the exact CDN asset list advertised by 7TV. Static emotes are not
+    // guaranteed to expose a PNG at every scale, so the old hard-coded 4x.png
+    // path could leave valid emotes blank in the picker.
+    val host = data?.get("host")?.jsonObject
+    val rawHostUrl = host?.get("url")?.jsonPrimitive?.contentOrNull
+    val hostUrl = when {
+        rawHostUrl.isNullOrBlank() -> "https://cdn.7tv.app/emote/$id"
+        rawHostUrl.startsWith("//") -> "https:$rawHostUrl"
+        rawHostUrl.startsWith("http://") || rawHostUrl.startsWith("https://") -> rawHostUrl
+        rawHostUrl.startsWith("/") -> "https://cdn.7tv.app$rawHostUrl"
+        else -> "https://$rawHostUrl"
+    }.trimEnd('/')
+
+    val advertisedFiles = host?.get("files")?.jsonArray.orEmpty().mapNotNull { file ->
+        runCatching { file.jsonObject["name"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+    }
+    val bestFile = advertisedFiles.maxByOrNull(::sevenTvAssetScore) ?: "4x.webp"
+
+    // 7TV marks overlays two ways across its API surface.
     val activeFlags = this["flags"]?.jsonPrimitive?.intOrNull ?: 0
     val dataFlags = data?.get("flags")?.jsonPrimitive?.intOrNull ?: 0
     val zeroWidth = (activeFlags and 0x1) != 0 || (dataFlags and 0x100) != 0
     return ChannelEmote(
         id = id,
         name = name,
-        url = "https://cdn.7tv.app/emote/$id/4x.${if (animated) "webp" else "png"}",
+        url = "$hostUrl/$bestFile",
         provider = EmoteProvider.SEVENTV,
         animated = animated,
         zeroWidth = zeroWidth,
     )
+}
+
+private fun sevenTvAssetScore(fileName: String): Int {
+    val scale = Regex("""^(\d+)x\.""").find(fileName)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    val format = when (fileName.substringAfterLast('.', "").lowercase()) {
+        "webp" -> 4
+        "gif" -> 3
+        "png" -> 2
+        "avif" -> 1
+        else -> 0
+    }
+    return scale * 100 + format
 }
 
 /**
