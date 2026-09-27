@@ -47,10 +47,10 @@ class SevenTvEmoteParseTest {
                 }
             }""",
         ).toSevenTvEmote()
-        assertEquals("https://cdn.7tv.app/emote/abc/4x.webp", e.url)
+        assertEquals("https://cdn.7tv.app/emote/abc/3x.webp", e.url)
     }
 
-    @Test fun choosesHighestAdvertisedScale() {
+    @Test fun choosesPreferredStaticScale() {
         val e = obj(
             """{
                 "id":"xyz",
@@ -65,5 +65,25 @@ class SevenTvEmoteParseTest {
             }""",
         ).toSevenTvEmote()
         assertEquals("https://cdn.7tv.app/emote/xyz/3x.webp", e.url)
+    }
+
+    @Test fun animatedEmotesPrefer2xToReduceFirstLoadDecodeCost() {
+        assertEquals(
+            "2x.webp",
+            selectSevenTvAsset(
+                listOf("1x.webp", "2x.webp", "3x.webp", "4x.webp"),
+                animated = true,
+            ),
+        )
+    }
+
+    @Test fun staticEmotesPrefer3xForHiDpiSharpnessWithout4xWaste() {
+        assertEquals(
+            "3x.webp",
+            selectSevenTvAsset(
+                listOf("1x.webp", "2x.webp", "3x.webp", "4x.webp"),
+                animated = false,
+            ),
+        )
     }
 }
