@@ -47,10 +47,10 @@ class SevenTvEmoteParseTest {
                 }
             }""",
         ).toSevenTvEmote()
-        assertEquals("https://cdn.7tv.app/emote/abc/3x.webp", e.url)
+        assertEquals("https://cdn.7tv.app/emote/abc/2x.webp", e.url)
     }
 
-    @Test fun choosesPreferredStaticScale() {
+    @Test fun choosesNearest2xStaticScale() {
         val e = obj(
             """{
                 "id":"xyz",
@@ -77,9 +77,9 @@ class SevenTvEmoteParseTest {
         )
     }
 
-    @Test fun staticEmotesPrefer3xForHiDpiSharpnessWithout4xWaste() {
+    @Test fun staticEmotesAlsoPrefer2xForSmallChatRendering() {
         assertEquals(
-            "3x.webp",
+            "2x.webp",
             selectSevenTvAsset(
                 listOf("1x.webp", "2x.webp", "3x.webp", "4x.webp"),
                 animated = false,
