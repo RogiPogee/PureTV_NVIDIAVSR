@@ -4,6 +4,7 @@ import com.puretv.twitch.core.model.PlaybackBackend
 import com.puretv.twitch.core.model.UpscalingMode
 import kotlinx.coroutines.flow.StateFlow
 import java.awt.Component
+import java.io.File
 
 /**
  * Backend-agnostic playback contract. Implemented by [VlcPlayer] (default) and
@@ -43,6 +44,12 @@ interface DesktopPlayer {
 
     fun setVolume(volume: Int)
     fun toggleMute()
+
+    /**
+     * Saves a frame directly from the decoder/video pipeline at the media's
+     * native image size. Returns true when the backend accepted the request.
+     */
+    fun saveScreenshot(file: File): Boolean = false
 
     /** Binds the video output to [panel]'s native surface. EDT-only; see lifecycle note above. */
     fun attachToPanel(panel: Component)
