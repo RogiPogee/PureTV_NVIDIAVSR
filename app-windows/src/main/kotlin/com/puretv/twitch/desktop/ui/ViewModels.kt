@@ -46,6 +46,7 @@ import com.puretv.twitch.desktop.player.PlaybackRecoveryAction
 import com.puretv.twitch.desktop.player.PlaybackRecoveryController
 import com.puretv.twitch.desktop.player.ProxyUnavailableException
 import com.puretv.twitch.desktop.player.DesktopPlayer
+import com.puretv.twitch.desktop.player.nextScreenshotFile
 import com.puretv.twitch.desktop.ui.chat.ChatModeration
 import com.puretv.twitch.desktop.ui.chat.buildSelfEcho
 import io.ktor.client.HttpClient
@@ -306,6 +307,7 @@ data class StreamUiState(
     val canChat: Boolean = false,
     /** The message the composer is currently replying to, if any. */
     val replyingTo: ChatMessage? = null,
+    val screenshotNotice: String? = null,
     val isLoading: Boolean = true,
     /** A stream-level fatal error (e.g. the local proxy port is in use). Distinct from
      *  a transient player-engine error; shown in place of the video with priority. */
@@ -592,6 +594,23 @@ class StreamViewModel(
     fun togglePlayPause() = vlcPlayer.togglePlayPause()
 
     fun jumpToLive() = vlcPlayer.jumpToLive()
+
+    fun captureScreenshot() {
+        val file = nextScreenshotFile(channelLogin)
+        val accepted = vlcPlayer.saveScreenshot(file)
+        val notice = if (accepted) {
+            "Screenshot saved to Pictures/PureTV"
+        } else {
+            "Screenshot failed"
+        }
+        _state.update { it.copy(screenshotNotice = notice) }
+        scope.launch {
+            delay(3_000)
+            _state.update { current ->
+                if (current.screenshotNotice == notice) current.copy(screenshotNotice = null) else current
+            }
+        }
+    }
 
     fun setVolume(volume: Int) = vlcPlayer.setVolume(volume)
 
