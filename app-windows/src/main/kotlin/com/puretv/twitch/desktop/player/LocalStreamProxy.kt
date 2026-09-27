@@ -7,6 +7,7 @@ import com.puretv.twitch.core.model.AdBlockStrategyResult
 import com.puretv.twitch.core.model.CleanStreamResult
 import com.puretv.twitch.core.model.StreamQuality
 import com.puretv.twitch.core.repository.StreamRepository
+import com.puretv.twitch.core.stream.HlsMasterParser
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -67,7 +68,7 @@ class LocalStreamProxy(
         const val PRIMARY_PLAYER_TYPE = "popout"
 
         /** Builds the URL VLCJ should be pointed at for [channelLogin]/[quality]. */
-        fun streamUrl(channelLogin: String, quality: StreamQuality = StreamQuality.AUTO): String =
+        fun streamUrl(channelLogin: String, quality: StreamQuality = StreamQuality.SOURCE): String =
             "http://localhost:$PORT/stream?channel=$channelLogin&quality=${quality.name}"
 
         /**
@@ -433,23 +434,30 @@ class LocalStreamProxy(
      * the requested quality isn't available for this broadcaster).
      */
     private fun filterMasterToQuality(masterPlaylist: String, quality: StreamQuality): String {
+        val variants = HlsMasterParser.parseVariants(masterPlaylist)
+        val selectedUrl = variants.firstOrNull { it.quality == quality }?.url
+            ?: if (quality == StreamQuality.SOURCE) {
+                // "Source" must stay highest-fidelity even when Twitch omits the
+                // usual VIDEO="chunked" marker. Do not fall back to the adaptive
+                // master here because VLC can then silently choose a lower rung.
+                HlsMasterParser.highestQualityVariant(variants)?.url
+            } else {
+                null
+            }
+            ?: return masterPlaylist
+
         val lines = masterPlaylist.lines()
         val out = StringBuilder(masterPlaylist.length)
-        var foundMatch = false
         var i = 0
         while (i < lines.size) {
             val line = lines[i]
             val trimmed = line.trim()
             if (trimmed.startsWith("#EXT-X-STREAM-INF")) {
                 val url = lines.getOrNull(i + 1)?.trim().orEmpty()
-                val nameHint = streamInfAttr(trimmed, "VIDEO")
-                    .ifBlank { streamInfAttr(trimmed, "RESOLUTION") }
-                val variantQuality = StreamQuality.fromVariantName(nameHint)
-                if (variantQuality == quality && url.isNotEmpty() && !url.startsWith("#")) {
+                if (url == selectedUrl && url.isNotEmpty() && !url.startsWith("#")) {
                     out.append(line).append('\n').append(url).append('\n')
-                    foundMatch = true
                 }
-                // Skip past the URL line regardless (it's consumed here)
+                // Skip past the URL line regardless (it's consumed here).
                 if (url.isNotEmpty() && !url.startsWith("#")) i++
             } else {
                 // Keep all non-variant lines: headers, EXT-X-MEDIA, blanks, etc.
@@ -457,7 +465,7 @@ class LocalStreamProxy(
             }
             i++
         }
-        return if (foundMatch) out.toString() else masterPlaylist
+        return out.toString()
     }
 
     /**
