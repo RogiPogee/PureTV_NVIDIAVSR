@@ -6,8 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
@@ -17,6 +15,9 @@ import java.awt.GraphicsEnvironment
 import java.awt.Point
 import java.awt.Toolkit
 import java.awt.Window
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
+import com.puretv.twitch.desktop.platform.WindowsNative
 
 /** Distance, in px, from a screen edge that counts as a "drag-to-snap" drop. */
 private const val SNAP_EDGE_PX = 14
@@ -56,6 +57,7 @@ class AppShellController(
     )
 
     private var fullscreenRestore: FullscreenRestore? = null
+    private var fullscreenBoundsGuard: ComponentAdapter? = null
 
     fun setPlayerMode(mode: PlayerMode) {
         val previous = playerModeState
@@ -67,47 +69,63 @@ class AppShellController(
     }
 
     private fun enterFullscreen() {
-        // Capture geometry through WindowState (it holds the *floating* size even
-        // while maximized, so restore is exact in either case).
+        // Capture geometry through WindowState (it holds the floating size even
+        // while maximized, so restore remains exact).
         fullscreenRestore = FullscreenRestore(
             placement = windowState.placement,
             position = windowState.position,
             size = windowState.size,
         )
         (window as? Frame)?.let { frame ->
-            val target = frame.graphicsConfiguration.bounds
-
-            // Keep Compose WindowState and the native AWT frame in agreement.
-            // Previously we only called frame.setBounds(). Compose could then
-            // asynchronously re-apply the old floating WindowState geometry,
-            // which made fullscreen work intermittently and sometimes left the
-            // old player-sized rectangle centered inside a black fullscreen
-            // window. Updating both sides removes that race.
+            // Compose uses dp while Win32 ultimately sizes the HWND in native monitor
+            // pixels. On scaled 1440p/4K displays those two coordinate spaces can
+            // disagree, which was the reason fullscreen sometimes stopped at a
+            // smaller 16:9 rectangle. Make Win32's monitor rectangle authoritative.
             windowState.placement = WindowPlacement.Floating
-            windowState.position = WindowPosition.Absolute(target.x.dp, target.y.dp)
-            windowState.size = DpSize(target.width.dp, target.height.dp)
-
-            // Clear MAXIMIZED_BOTH first because a maximized frame ignores bounds,
-            // then cover the complete monitor (including the taskbar strip).
             frame.extendedState = Frame.NORMAL
-            frame.setBounds(target)
 
-            // Compose Desktop may apply WindowState one EDT turn later. Reassert
-            // the exact monitor bounds after that turn so the heavyweight video
-            // surface is guaranteed to receive a full-size resize event.
+            fullscreenBoundsGuard?.let(frame::removeComponentListener)
+            val guard = object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent?) = keepNativeFullscreen(frame)
+                override fun componentMoved(e: ComponentEvent?) = keepNativeFullscreen(frame)
+            }
+            fullscreenBoundsGuard = guard
+            frame.addComponentListener(guard)
+
+            keepNativeFullscreen(frame)
+            // WindowState may finish applying the Floating transition one EDT turn
+            // later. Reassert after that transition too. The component guard then
+            // keeps it exact for the remainder of fullscreen.
             java.awt.EventQueue.invokeLater {
-                if (playerModeState == PlayerMode.FULLSCREEN) {
-                    frame.setBounds(target)
-                    frame.validate()
-                }
+                if (playerModeState == PlayerMode.FULLSCREEN) keepNativeFullscreen(frame)
+            }
+            javax.swing.Timer(120) {
+                if (playerModeState == PlayerMode.FULLSCREEN) keepNativeFullscreen(frame)
+            }.apply {
+                isRepeats = false
+                start()
             }
         }
+    }
+
+    private fun keepNativeFullscreen(frame: Frame) {
+        if (playerModeState != PlayerMode.FULLSCREEN) return
+        if (!WindowsNative.fitToCurrentMonitor(frame)) {
+            // Non-Windows/dev fallback. On Windows the native path is preferred
+            // because it is DPI-correct and uses the monitor's real resolution.
+            frame.bounds = frame.graphicsConfiguration.bounds
+        }
+        frame.validate()
     }
 
     private fun exitFullscreen() {
         val restore = fullscreenRestore ?: return
         fullscreenRestore = null
-        (window as? Frame)?.extendedState = Frame.NORMAL
+        (window as? Frame)?.let { frame ->
+            fullscreenBoundsGuard?.let(frame::removeComponentListener)
+            fullscreenBoundsGuard = null
+            frame.extendedState = Frame.NORMAL
+        }
         // Replay through WindowState so CMP re-applies geometry and keeps its own
         // size/placement memory consistent (important if restoring to Maximized).
         windowState.position = restore.position
