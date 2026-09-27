@@ -151,6 +151,22 @@ object HlsMasterParser {
     }
 
     /**
+     * Highest-fidelity variant in a ladder. Twitch normally identifies the
+     * broadcaster-original stream as VIDEO="chunked" (mapped to SOURCE), but
+     * some manifests omit that hint. In that case Source must still mean the
+     * best stream available, not hand the whole adaptive master back to the
+     * player and allow it to silently drop resolution.
+     *
+     * Prefer resolution first, then frame rate, then advertised bandwidth.
+     */
+    fun highestQualityVariant(variants: List<PlaylistVariant>): PlaylistVariant? =
+        variants.maxWithOrNull(
+            compareBy<PlaylistVariant> { pixelCount(it.resolution) }
+                .thenBy { it.frameRate }
+                .thenBy { it.bandwidth },
+        )
+
+    /**
      * Picks the media-playlist URL from [masterPlaylist] that best matches a
      * target quality, so the ad-block backup-swap can fetch the *same* quality
      * from an alternate player type's manifest. Server-side port of vaft's
