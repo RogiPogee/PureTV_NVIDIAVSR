@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class VodPlayerState(
-    val quality: StreamQuality = StreamQuality.AUTO,
+    val quality: StreamQuality = StreamQuality.SOURCE,
     val loading: Boolean = true,
     val error: String? = null,
     val resumeOfferMs: Long? = null,
@@ -48,7 +48,10 @@ class VodPlayerViewModel(
     init {
         val resumeAt = store.get(vodId)?.let { ResumePolicy.resumePositionMs(it) }
         _state.value = _state.value.copy(resumeOfferMs = resumeAt)
-        play(StreamQuality.AUTO)
+        val preferredQuality = runCatching {
+            StreamQuality.valueOf(settingsStore.settings.value.preferredQuality.uppercase())
+        }.getOrDefault(StreamQuality.SOURCE)
+        play(preferredQuality)
         scope.launch {
             runCatching { vodRepository.loadStoryboard(vodId) }
                 .onSuccess { sb -> _state.value = _state.value.copy(storyboard = sb) }
@@ -78,6 +81,7 @@ class VodPlayerViewModel(
 
     fun setQuality(quality: StreamQuality) {
         if (_state.value.quality == quality) return
+        settingsStore.updateSettings { it.copy(preferredQuality = quality.name.lowercase()) }
         play(quality)
     }
 
