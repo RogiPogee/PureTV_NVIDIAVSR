@@ -38,19 +38,31 @@ class PickableEmoteTest {
         assertEquals(EmoteSource.TWITCH_GLOBAL, bySource["GlobT"])
     }
 
-    @Test fun dedupesByCodeKeepingFirstOccurrenceAndItsSource() {
-        // Same code appears as a channel Twitch emote AND a global third-party
-        // emote; the channel one wins (first), keeping its source + url.
+    @Test fun sameCodeFromDifferentProvidersKeepsThe7TvPickerEntry() {
         val result = buildPickableEmotes(
             twitchChannel = listOf(emote("Dup", EmoteProvider.TWITCH, url = "channel-url")),
             thirdPartyChannel = emptyList(),
             twitchGlobal = emptyList(),
-            thirdPartyGlobal = listOf(emote("dup", EmoteProvider.SEVENTV, url = "global-url")),
+            thirdPartyGlobal = listOf(emote("dup", EmoteProvider.SEVENTV, url = "7tv-url")),
+        )
+        assertEquals(2, result.size)
+        assertEquals(
+            listOf(EmoteSource.TWITCH_CHANNEL, EmoteSource.SEVENTV),
+            result.map { it.source },
+        )
+        assertEquals(listOf("channel-url", "7tv-url"), result.map { it.imageUrl })
+    }
+
+    @Test fun stillDedupesDuplicateCodesWithinTheSameProvider() {
+        val result = buildPickableEmotes(
+            twitchChannel = emptyList(),
+            thirdPartyChannel = listOf(emote("Dup", EmoteProvider.SEVENTV, url = "channel-7tv")),
+            twitchGlobal = emptyList(),
+            thirdPartyGlobal = listOf(emote("dup", EmoteProvider.SEVENTV, url = "global-7tv")),
         )
         assertEquals(1, result.size)
-        assertEquals("Dup", result[0].code)
-        assertEquals("channel-url", result[0].imageUrl)
-        assertEquals(EmoteSource.TWITCH_CHANNEL, result[0].source)
+        assertEquals("channel-7tv", result[0].imageUrl)
+        assertEquals(EmoteSource.SEVENTV, result[0].source)
     }
 
     @Test fun skipsBlankNames() {
