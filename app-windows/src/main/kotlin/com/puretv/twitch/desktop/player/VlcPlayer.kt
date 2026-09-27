@@ -12,6 +12,7 @@ import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.base.State
 import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer
 import java.awt.Component
+import java.io.File
 import javax.swing.SwingUtilities
 
 /**
@@ -300,6 +301,14 @@ class VlcPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
         preMuteVolume = next.preMute
         _status.update { it.copy(volume = next.volume, isMuted = next.isMuted) }
         runCatching { mp.audio().setVolume(next.volume) }
+    }
+
+    override fun saveScreenshot(file: File): Boolean {
+        val mp = mediaPlayer ?: return false
+        file.parentFile?.mkdirs()
+        // VLCJ's SnapshotApi.save(File) asks libVLC to capture the media itself
+        // at native video dimensions, not the desktop/window surface.
+        return runCatching { mp.snapshots().save(file) }.getOrDefault(false)
     }
 
     override fun release() {
