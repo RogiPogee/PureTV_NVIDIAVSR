@@ -181,9 +181,12 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
             // darker ground they would just look like arbitrary rounding.
             Surface(modifier = Modifier.fillMaxSize(), color = c.surfaceLowest) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (shell.playerMode != PlayerMode.FULLSCREEN && shell.playerMode != PlayerMode.COMPACT) {
+                    if (shell.playerMode != PlayerMode.FULLSCREEN) {
+                        // Keep the compact player's title bar so the always-on-top
+                        // mini window remains draggable. Suppress update banners in
+                        // compact mode so they never cover/resize the player.
                         CustomTitleBar(shell = shell, onClose = onClose, awtWindow = awtWindow)
-                        if (!updateDismissed) {
+                        if (shell.playerMode != PlayerMode.COMPACT && !updateDismissed) {
                             UpdateBanner(
                                 state = updateState,
                                 onUpdate = {
