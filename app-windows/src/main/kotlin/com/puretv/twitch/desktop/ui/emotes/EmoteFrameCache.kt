@@ -3,6 +3,7 @@ package com.puretv.twitch.desktop.ui.emotes
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -31,6 +32,12 @@ class EmoteFrameCache(
 
     // Entries evicted from [cache] while still referenced; closed when refs hit zero.
     private val pendingClose = HashMap<String, AnimatedEmoteFrames>()
+
+    // One download/decode per URL at a time. A busy Twitch chat can put the same
+    // animated 7TV emote on screen dozens of times in one frame; without this,
+    // every first-use composable races through its own HTTP fetch + Skia decode
+    // before the cache is populated. Waiters share the owner's result instead.
+    private val inFlight = HashMap<String, CompletableDeferred<AnimatedEmoteFrames?>>()
 
     private val cache = object : LinkedHashMap<String, AnimatedEmoteFrames?>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnimatedEmoteFrames?>): Boolean {
@@ -62,31 +69,62 @@ class EmoteFrameCache(
 
     /** Decoded frames for [url], or null if static / undecodable. Caches success + static. */
     suspend fun frames(url: String): AnimatedEmoteFrames? {
-        synchronized(lock) { if (cache.containsKey(url)) return cache[url] }
-        // Decode off the lock (and off the EDT). Two coroutines may race the same uncached
-        // url; the loser closes its duplicate below rather than leaking it.
-        //
-        // Audit F12: a TRANSIENT fetch failure (timeout/503) must NOT be cached as a permanent
-        // null — only cache a successful fetch, so the next request retries after connectivity
-        // returns. (A genuine static image decodes to null and IS cached so we don't re-decode.)
-        val bytes = withContext(Dispatchers.IO) {
-            runCatching { httpClient.get(url).body<ByteArray>() }.getOrNull()
-        } ?: return null
-        // The Skia decode is CPU-bound and MUST run off the EDT. frames() is called from
-        // AnimatedEmote's LaunchedEffect, whose dispatcher on Compose Desktop is the main
-        // (EDT) dispatcher, so decoding inline here ran on the UI thread. Combined with the
-        // 2-arg readPixels (which recursively re-decodes each frame's required-frame chain,
-        // O(n^2)), a large multi-frame emote burned tens of seconds of EDT CPU and froze the
-        // whole window. Default = the CPU thread pool.
-        val decoded = withContext(Dispatchers.Default) { decodeAnimatedFrames(bytes) }
+        val flight: CompletableDeferred<AnimatedEmoteFrames?>
+        val owner: Boolean
         synchronized(lock) {
-            if (cache.containsKey(url)) {
-                // Another coroutine won the race and cached an equivalent result; drop ours.
-                decoded?.close()
-                return cache[url]
+            if (cache.containsKey(url)) return cache[url]
+            val existing = inFlight[url]
+            if (existing != null) {
+                flight = existing
+                owner = false
+            } else {
+                flight = CompletableDeferred()
+                inFlight[url] = flight
+                owner = true
             }
-            cache[url] = decoded
-            return decoded
+        }
+
+        // All duplicate on-screen instances await the first request/decode instead
+        // of multiplying network traffic and CPU work.
+        if (!owner) return flight.await()
+
+        try {
+            // Audit F12: a TRANSIENT fetch failure (timeout/503) must NOT be cached
+            // as a permanent null. Complete current waiters with null, remove the
+            // flight, and let the next composition retry normally.
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { httpClient.get(url).body<ByteArray>() }.getOrNull()
+            }
+            if (bytes == null) {
+                synchronized(lock) { inFlight.remove(url) }
+                flight.complete(null)
+                return null
+            }
+
+            // CPU-bound Skia decode stays off the EDT. A genuine static image
+            // decodes to null and IS cached so it is not repeatedly decoded.
+            val decoded = withContext(Dispatchers.Default) { decodeAnimatedFrames(bytes) }
+
+            val result = synchronized(lock) {
+                val resolved =
+                    if (cache.containsKey(url)) {
+                        // Test seeding or another explicit cache write won while
+                        // this request was running. Drop our duplicate safely.
+                        decoded?.close()
+                        cache[url]
+                    } else {
+                        cache[url] = decoded
+                        decoded
+                    }
+                inFlight.remove(url)
+                resolved
+            }
+            flight.complete(result)
+            return result
+        } catch (t: Throwable) {
+            synchronized(lock) { inFlight.remove(url) }
+            flight.completeExceptionally(t)
+            throw t
         }
     }
 
