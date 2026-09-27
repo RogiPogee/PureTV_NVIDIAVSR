@@ -106,7 +106,8 @@ private const val SeekStepLargeMs = 30_000L
  *
  *   F      toggle fullscreen      T          toggle theater
  *   C      toggle chat            Space      play/pause
- *   P      pin/unpin window       Esc        exit immersive
+ *   P      pin/unpin window       M          compact mini-player
+ *   S      native screenshot      Esc        exit immersive
  *   Left/Right skip 10s (Shift: 30s)
  */
 @Composable
@@ -160,6 +161,11 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                 KeyEvent.VK_C -> { shell.toggleChat(); true }
                 KeyEvent.VK_SPACE -> { viewModel.togglePlayPause(); true }
                 KeyEvent.VK_P -> { shell.toggleAlwaysOnTop(); true }
+                KeyEvent.VK_M -> {
+                    shell.setPlayerMode(if (m == PlayerMode.COMPACT) PlayerMode.DEFAULT else PlayerMode.COMPACT)
+                    true
+                }
+                KeyEvent.VK_S -> { viewModel.captureScreenshot(); true }
                 KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
                 // Skip back / forward. Auto-repeat scrubs, since AWT sends a fresh
                 // KEY_PRESSED per repeat. resetControls() rides along so a seek in
@@ -185,7 +191,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(c.surfaceLowest)
-            .padding(8.dp)
+            .padding(if (mode == PlayerMode.DEFAULT) 8.dp else 0.dp)
             .pointerInput(mode) {
                 var lastPos: Offset? = null
                 awaitPointerEventScope {
@@ -202,10 +208,13 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                 }
             },
     ) {
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(if (mode == PlayerMode.DEFAULT) 8.dp else 0.dp),
+        ) {
             Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AnimatedVisibility(
-                    visible = controlsVisible || mode == PlayerMode.DEFAULT,
+                    visible = mode != PlayerMode.COMPACT && (controlsVisible || mode == PlayerMode.DEFAULT),
                     enter = slideInVertically { -it } + fadeIn(),
                     exit = slideOutVertically { -it } + fadeOut(),
                 ) {
@@ -240,7 +249,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                             vlcPlayer = viewModel.player,
                             modifier = Modifier.fillMaxSize(),
                             onUserActivity = { resetControls() },
-                            hideCursor = mode == PlayerMode.FULLSCREEN && !controlsVisible,
+                            hideCursor = (mode == PlayerMode.FULLSCREEN || mode == PlayerMode.COMPACT) && !controlsVisible,
                         )
                     }
                     if (state.loading && state.error == null) {
@@ -250,7 +259,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
 
                 // Playback menu in the Column (not over the video Canvas), above controls.
                 AnimatedVisibility(
-                    visible = settingsMenuOpen,
+                    visible = settingsMenuOpen && mode != PlayerMode.COMPACT,
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut(),
                 ) {
@@ -276,8 +285,13 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                     VodControls(
                         koin = koin,
                         viewModel = viewModel,
+                        mode = mode,
                         settingsOpen = settingsMenuOpen,
                         onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
+                        onScreenshot = viewModel::captureScreenshot,
+                        onToggleCompact = {
+                            shell.setPlayerMode(if (mode == PlayerMode.COMPACT) PlayerMode.DEFAULT else PlayerMode.COMPACT)
+                        },
                     )
                 }
             }
@@ -430,13 +444,69 @@ private fun VodTopBar(
 private fun VodControls(
     koin: Koin,
     viewModel: VodPlayerViewModel,
+    mode: PlayerMode,
     settingsOpen: Boolean,
     onToggleSettings: () -> Unit,
+    onScreenshot: () -> Unit,
+    onToggleCompact: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val status by viewModel.status.collectAsState()
     val c = PureTvTheme.colors
     val shapes = PureTvTheme.shapes
+
+    if (mode == PlayerMode.COMPACT) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .background(c.surfaceContainer)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ExpressiveIconButton(
+                icon = if (status.isPlaying) ExpressiveIcons.Pause else ExpressiveIcons.Play,
+                contentDescription = if (status.isPlaying) "Pause" else "Play",
+                onClick = viewModel::togglePlayPause,
+                style = ExpressiveButtonStyle.Filled,
+                boxSize = 52.dp,
+                iconSize = 24.dp,
+            )
+            ExpressiveIconButton(
+                icon = if (status.isMuted || status.volume == 0) ExpressiveIcons.VolumeOff else ExpressiveIcons.VolumeUp,
+                contentDescription = if (status.isMuted) "Unmute" else "Mute",
+                onClick = viewModel::toggleMute,
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 48.dp,
+                iconSize = 21.dp,
+            )
+            Text(
+                "${formatTimecode(status.positionMs)} / ${formatTimecode(status.durationMs)}",
+                style = PureTvType.data,
+                color = c.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+            )
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.Camera,
+                contentDescription = "Save screenshot",
+                onClick = onScreenshot,
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 48.dp,
+                iconSize = 21.dp,
+            )
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.PictureInPicture,
+                contentDescription = "Exit mini-player",
+                onClick = onToggleCompact,
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 48.dp,
+                iconSize = 21.dp,
+            )
+        }
+        return
+    }
 
     Column(
         Modifier
@@ -522,6 +592,32 @@ private fun VodControls(
                 modifier = Modifier.weight(1f),
             )
             Text(formatTimecode(status.durationMs), style = PureTvType.data, color = c.onSurfaceVariant)
+
+            state.screenshotNotice?.let {
+                Text(
+                    it,
+                    style = PureTvType.dataSmall,
+                    color = c.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.Camera,
+                contentDescription = "Save screenshot",
+                onClick = onScreenshot,
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 52.dp,
+                iconSize = 22.dp,
+            )
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.PictureInPicture,
+                contentDescription = "Mini-player",
+                onClick = onToggleCompact,
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 52.dp,
+                iconSize = 22.dp,
+            )
 
             Box(Modifier.size(56.dp).clip(shapes.pillShape).background(c.surfaceHigh)) {
                 val settingsInteraction = remember { MutableInteractionSource() }
