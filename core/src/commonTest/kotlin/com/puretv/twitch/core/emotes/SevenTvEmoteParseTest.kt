@@ -24,7 +24,7 @@ class SevenTvEmoteParseTest {
         val e = obj("""{"id":"60a","name":"catJAM","flags":0,"data":{"animated":true,"flags":0}}""").toSevenTvEmote()
         assertEquals(false, e.zeroWidth)
         assertEquals(true, e.animated)
-        assertEquals("https://cdn.7tv.app/emote/60a/4x.webp", e.url)
+        assertEquals("https://cdn.7tv.app/emote/60a/2x.webp", e.url)
     }
 
     @Test fun usesAdvertisedWebpInsteadOfAssumingStaticPngExists() {
