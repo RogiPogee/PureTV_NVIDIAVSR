@@ -289,7 +289,7 @@ data class StreamUiState(
     val channel: ChannelInfo? = null,
     val streamInfo: StreamInfo? = null,
     val playableUrl: String? = null,
-    val currentQuality: StreamQuality = StreamQuality.AUTO,
+    val currentQuality: StreamQuality = StreamQuality.SOURCE,
     val adBlockStatus: AdBlockStatus = AdBlockStatus.UNKNOWN,
     val chatMessages: List<ChatMessage> = emptyList(),
     /** Messages that @-mention the local viewer, kept in their own buffer so the
@@ -391,7 +391,7 @@ class StreamViewModel(
             }.getOrNull()
             val preferredQuality = runCatching {
                 StreamQuality.valueOf(settingsStore.settings.value.preferredQuality.uppercase())
-            }.getOrDefault(StreamQuality.AUTO)
+            }.getOrDefault(StreamQuality.SOURCE)
 
             _state.update {
                 it.copy(channel = channel, streamInfo = liveInfo, currentQuality = preferredQuality, isLoading = false)
@@ -534,7 +534,10 @@ class StreamViewModel(
         vlcPlayer.play(url)
     }
 
-    fun setQuality(quality: StreamQuality) = playAt(quality)
+    fun setQuality(quality: StreamQuality) {
+        settingsStore.updateSettings { it.copy(preferredQuality = quality.name.lowercase()) }
+        playAt(quality)
+    }
 
     /** Live-apply the scaler to the running player AND persist it. The whole point:
      *  it changes the picture mid-stream, not just on restart. */
