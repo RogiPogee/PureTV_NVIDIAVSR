@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
@@ -22,7 +24,7 @@ import com.puretv.twitch.desktop.platform.WindowsNative
 /** Distance, in px, from a screen edge that counts as a "drag-to-snap" drop. */
 private const val SNAP_EDGE_PX = 14
 
-enum class PlayerMode { DEFAULT, THEATER, FULLSCREEN }
+enum class PlayerMode { DEFAULT, THEATER, COMPACT, FULLSCREEN }
 
 /**
  * Owns window-chrome state (player mode, chat, maximize/minimize/fullscreen).
@@ -62,12 +64,35 @@ class AppShellController(
     private var fullscreenRestore: FullscreenRestore? = null
     private var fullscreenBoundsGuard: ComponentAdapter? = null
 
+    private data class CompactRestore(
+        val placement: WindowPlacement,
+        val position: WindowPosition,
+        val size: DpSize,
+        val chatOpen: Boolean,
+        val alwaysOnTop: Boolean,
+    )
+
+    private var compactRestore: CompactRestore? = null
+
     fun setPlayerMode(mode: PlayerMode) {
         val previous = playerModeState
+        if (previous == mode) return
+
+        // Tear down geometry owned by the previous special mode before the new
+        // mode captures/restyles the window. This makes COMPACT ↔ FULLSCREEN
+        // transitions restore through the same stable floating geometry.
+        when (previous) {
+            PlayerMode.FULLSCREEN -> exitFullscreen()
+            PlayerMode.COMPACT -> exitCompact()
+            else -> Unit
+        }
+
         playerModeState = mode
-        when {
-            mode == PlayerMode.FULLSCREEN && previous != PlayerMode.FULLSCREEN -> enterFullscreen()
-            mode != PlayerMode.FULLSCREEN && previous == PlayerMode.FULLSCREEN -> exitFullscreen()
+
+        when (mode) {
+            PlayerMode.FULLSCREEN -> enterFullscreen()
+            PlayerMode.COMPACT -> enterCompact()
+            else -> Unit
         }
     }
 
@@ -136,7 +161,34 @@ class AppShellController(
         windowState.placement = restore.placement
     }
 
-    fun toggleChat() { isChatOpenState = !isChatOpenState }
+    private fun enterCompact() {
+        compactRestore = CompactRestore(
+            placement = windowState.placement,
+            position = windowState.position,
+            size = windowState.size,
+            chatOpen = isChatOpenState,
+            alwaysOnTop = isAlwaysOnTop,
+        )
+        isChatOpenState = false
+        windowState.placement = WindowPlacement.Floating
+        windowState.size = DpSize(720.dp, 480.dp)
+        (window as? Frame)?.extendedState = Frame.NORMAL
+        setAlwaysOnTop(true)
+    }
+
+    private fun exitCompact() {
+        val restore = compactRestore ?: return
+        compactRestore = null
+        windowState.position = restore.position
+        windowState.size = restore.size
+        windowState.placement = restore.placement
+        isChatOpenState = restore.chatOpen
+        setAlwaysOnTop(restore.alwaysOnTop)
+    }
+
+    fun toggleChat() {
+        if (playerModeState != PlayerMode.COMPACT) isChatOpenState = !isChatOpenState
+    }
 
     fun setAlwaysOnTop(enabled: Boolean) {
         if (alwaysOnTopState == enabled) return
