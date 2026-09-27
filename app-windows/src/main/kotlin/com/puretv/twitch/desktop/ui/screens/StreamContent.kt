@@ -149,8 +149,8 @@ private val CHAT_PANEL_RADIUS = 24.dp
  *
  *   F      toggle fullscreen      T  toggle theater
  *   C      toggle chat            Space  play/pause
- *   L      jump to live           F3     upscaling stats (mpv)
- *   Esc    exit immersive
+ *   L      jump to live           P      pin/unpin window
+ *   F3     upscaling stats (mpv)  Esc    exit immersive
  */
 @Composable
 fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onRequestSignIn: () -> Unit = {}) {
@@ -261,6 +261,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                 KeyEvent.VK_C -> { shell.toggleChat(); true }
                 KeyEvent.VK_SPACE -> { viewModel.togglePlayPause(); true }
                 KeyEvent.VK_L -> { viewModel.jumpToLive(); true }
+                KeyEvent.VK_P -> { shell.toggleAlwaysOnTop(); true }
                 // Esc only acts when immersive, so it doesn't swallow a stray Esc
                 // elsewhere; in DEFAULT mode it passes through untouched.
                 KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
@@ -416,6 +417,8 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                             activeBackend = vlcPlayer.backend,
                             selectedBackend = appSettings.playbackBackend,
                             onBackendSelected = viewModel::setPlaybackBackend,
+                            alwaysOnTop = shell.isAlwaysOnTop,
+                            onAlwaysOnTopSelected = shell::setAlwaysOnTop,
                         )
                     }
                 }
