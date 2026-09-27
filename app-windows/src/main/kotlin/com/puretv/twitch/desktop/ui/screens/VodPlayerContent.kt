@@ -149,8 +149,17 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
     var hideJob by remember { mutableStateOf<Job?>(null) }
     val currentMode by rememberUpdatedState(mode)
     fun resetControls() {
-        controlsVisible = true
         hideJob?.cancel()
+
+        // Match live playback: fullscreen is a stable video-only surface.
+        // Mouse movement must not bring Compose chrome back and resize the
+        // heavyweight video component underneath the native fullscreen HWND.
+        if (currentMode == PlayerMode.FULLSCREEN) {
+            controlsVisible = false
+            return
+        }
+
+        controlsVisible = true
         if (currentMode != PlayerMode.DEFAULT) {
             hideJob = scope.launch {
                 delay(PureTvMotion.ControlsAutoHideMs)
@@ -241,7 +250,7 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                             val pos = event.changes.firstOrNull()?.position
                             if (pos != null && pos != lastPos) {
                                 lastPos = pos
-                                resetControls()
+                                if (currentMode != PlayerMode.FULLSCREEN) resetControls()
                             }
                         }
                     }
@@ -288,7 +297,9 @@ fun VodPlayerContent(koin: Koin, launch: VodLaunch, onBack: () -> Unit) {
                         else -> VlcPlayerView(
                             vlcPlayer = viewModel.player,
                             modifier = Modifier.fillMaxSize(),
-                            onUserActivity = { resetControls() },
+                            onUserActivity = {
+                                if (currentMode != PlayerMode.FULLSCREEN) resetControls()
+                            },
                             hideCursor = (mode == PlayerMode.FULLSCREEN || mode == PlayerMode.COMPACT) && !controlsVisible,
                         )
                     }
