@@ -53,7 +53,7 @@ class EmoteRepositoryChannelLoadTest {
 
         val result = repo.loadChannelEmotes("123", "tester")
 
-        assertEquals(1, fullSetCalls.value)
+        assertEquals(1, fullSetCalls.get())
         assertEquals(setOf("One", "Two"), result.map { it.name }.toSet())
     }
 }
