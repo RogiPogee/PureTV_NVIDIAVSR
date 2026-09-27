@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
@@ -72,12 +74,33 @@ class AppShellController(
             position = windowState.position,
             size = windowState.size,
         )
-        windowState.placement = WindowPlacement.Floating
         (window as? Frame)?.let { frame ->
-            // Clear MAXIMIZED_BOTH — a maximized frame ignores setBounds — then
-            // cover the full monitor (bounds include the taskbar strip).
+            val target = frame.graphicsConfiguration.bounds
+
+            // Keep Compose WindowState and the native AWT frame in agreement.
+            // Previously we only called frame.setBounds(). Compose could then
+            // asynchronously re-apply the old floating WindowState geometry,
+            // which made fullscreen work intermittently and sometimes left the
+            // old player-sized rectangle centered inside a black fullscreen
+            // window. Updating both sides removes that race.
+            windowState.placement = WindowPlacement.Floating
+            windowState.position = WindowPosition.Absolute(target.x.dp, target.y.dp)
+            windowState.size = DpSize(target.width.dp, target.height.dp)
+
+            // Clear MAXIMIZED_BOTH first because a maximized frame ignores bounds,
+            // then cover the complete monitor (including the taskbar strip).
             frame.extendedState = Frame.NORMAL
-            frame.bounds = frame.graphicsConfiguration.bounds
+            frame.setBounds(target)
+
+            // Compose Desktop may apply WindowState one EDT turn later. Reassert
+            // the exact monitor bounds after that turn so the heavyweight video
+            // surface is guaranteed to receive a full-size resize event.
+            java.awt.EventQueue.invokeLater {
+                if (playerModeState == PlayerMode.FULLSCREEN) {
+                    frame.setBounds(target)
+                    frame.validate()
+                }
+            }
         }
     }
 
