@@ -394,6 +394,19 @@ class MpvPlayer(private val settingsStore: DesktopSettingsStore) : DesktopPlayer
         withCtx { l, c -> runCatching { l.mpv_set_property_string(c, "volume", next.volume.toString()) }; Unit }
     }
 
+    override fun saveScreenshot(file: File): Boolean {
+        val l = lib ?: return false
+        file.parentFile?.mkdirs()
+        synchronized(nativeLock) {
+            val c = ctx ?: return false
+            // "video" captures the unscaled video image after video filters and
+            // excludes OSD/subtitles, preserving the stream frame itself.
+            return runCatching {
+                l.mpv_command(c, arrayOf("screenshot-to-file", file.absolutePath, "video", null)) >= 0
+            }.getOrDefault(false)
+        }
+    }
+
     /**
      * Live-apply a scaler change to the running context (the fix for "changing the
      * scaling did nothing mid-stream"): scale/cscale/dscale/glsl-shaders are all
