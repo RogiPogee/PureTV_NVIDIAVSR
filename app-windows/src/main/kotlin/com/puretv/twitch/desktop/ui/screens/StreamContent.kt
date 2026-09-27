@@ -381,7 +381,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
             ) {
                 // Top bar: always in DEFAULT, slides up when idle in THEATER/FULLSCREEN
                 AnimatedVisibility(
-                    visible = controlsVisible || mode == PlayerMode.DEFAULT,
+                    visible = mode != PlayerMode.COMPACT && (controlsVisible || mode == PlayerMode.DEFAULT),
                     enter = slideInVertically { -it } + fadeIn(),
                     exit = slideOutVertically { -it } + fadeOut(),
                 ) {
@@ -458,7 +458,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                     // heavyweight Canvas paints above Compose), between video and controls.
                     // Opening it pushes the video up, the same way the controls bar does.
                     AnimatedVisibility(
-                        visible = settingsMenuOpen,
+                        visible = settingsMenuOpen && mode != PlayerMode.COMPACT,
                         enter = expandVertically() + fadeIn(),
                         exit = shrinkVertically() + fadeOut(),
                     ) {
