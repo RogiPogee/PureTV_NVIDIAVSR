@@ -94,7 +94,7 @@ class EmoteRepository(
         return ChannelEmote(
             id = id,
             name = code,
-            url = "https://cdn.betterttv.net/emote/$id/3x",
+            url = "https://cdn.betterttv.net/emote/$id/2x",
             provider = EmoteProvider.BTTV,
             animated = imageType == "gif",
         )
@@ -115,7 +115,7 @@ class EmoteRepository(
         val id = this["id"]!!.jsonPrimitive.content
         val name = this["name"]!!.jsonPrimitive.content
         val urls = this["urls"]?.jsonObject
-        val bestUrl = urls?.get("4") ?: urls?.get("2") ?: urls?.get("1")
+        val bestUrl = urls?.get("2") ?: urls?.get("4") ?: urls?.get("1")
         return ChannelEmote(
             id = id,
             name = name,
@@ -178,14 +178,12 @@ internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
         runCatching { file.jsonObject["name"]?.jsonPrimitive?.contentOrNull }.getOrNull()
     }
 
-    // Chat renders emotes at roughly 28dp. Pulling 4x assets for every first-use
-    // emote was visually indistinguishable at that size but noticeably slower,
-    // especially for animated WebP where download + decode cost scales with pixel
-    // count. Prefer 2x for animated emotes and 3x for static emotes, falling back
-    // to the nearest advertised WebP scale. This keeps them crisp on HiDPI while
-    // cutting first-load latency and decode work substantially.
+    // Chat renders emotes at roughly 28dp in a narrow side panel. 2x assets are
+    // already comfortably above the physical size used on typical 125–150% DPI
+    // scaling, while 3x/4x only add network and decode cost. Keep all providers
+    // aligned on 2x so first-use emotes appear sooner without looking softer.
     val bestFile = selectSevenTvAsset(advertisedFiles, animated)
-        ?: if (animated) "2x.webp" else "3x.webp"
+        ?: "2x.webp"
 
     // 7TV marks overlays two ways across its API surface.
     val activeFlags = this["flags"]?.jsonPrimitive?.intOrNull ?: 0
@@ -202,7 +200,7 @@ internal fun JsonObject.toSevenTvEmote(): ChannelEmote {
 }
 
 internal fun selectSevenTvAsset(files: List<String>, animated: Boolean): String? {
-    val targetScale = if (animated) 2 else 3
+    val targetScale = 2
     val candidates = files.mapNotNull { file ->
         val scale = Regex("""^(\d+)x\.""").find(file)?.groupValues?.get(1)?.toIntOrNull()
             ?: return@mapNotNull null
