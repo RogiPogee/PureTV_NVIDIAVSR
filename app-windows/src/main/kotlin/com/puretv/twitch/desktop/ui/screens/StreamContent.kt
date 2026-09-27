@@ -149,7 +149,8 @@ private val CHAT_PANEL_RADIUS = 24.dp
  *
  *   F      toggle fullscreen      T  toggle theater
  *   C      toggle chat            Space  play/pause
- *   F3     upscaling stats (mpv)  Esc    exit immersive
+ *   L      jump to live           F3     upscaling stats (mpv)
+ *   Esc    exit immersive
  */
 @Composable
 fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onRequestSignIn: () -> Unit = {}) {
@@ -259,6 +260,7 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                 KeyEvent.VK_T -> { shell.setPlayerMode(if (m == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER); true }
                 KeyEvent.VK_C -> { shell.toggleChat(); true }
                 KeyEvent.VK_SPACE -> { viewModel.togglePlayPause(); true }
+                KeyEvent.VK_L -> { viewModel.jumpToLive(); true }
                 // Esc only acts when immersive, so it doesn't swallow a stray Esc
                 // elsewhere; in DEFAULT mode it passes through untouched.
                 KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
@@ -428,12 +430,14 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                         isPlaying = playerStatus.isPlaying,
                         volume = playerStatus.volume,
                         isMuted = playerStatus.isMuted,
+                        currentQuality = state.currentQuality,
                         settingsOpen = settingsMenuOpen,
                         mode = mode,
                         isChatOpen = isChatOpen,
                         onTogglePlayPause = viewModel::togglePlayPause,
                         onVolumeChange = viewModel::setVolume,
                         onToggleMute = viewModel::toggleMute,
+                        onJumpToLive = viewModel::jumpToLive,
                         onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
                         onToggleChat = { shell.toggleChat() },
                         onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
@@ -580,12 +584,14 @@ private fun PlaybackControls(
     isPlaying: Boolean,
     volume: Int,
     isMuted: Boolean,
+    currentQuality: StreamQuality,
     settingsOpen: Boolean,
     mode: PlayerMode,
     isChatOpen: Boolean,
     onTogglePlayPause: () -> Unit,
     onVolumeChange: (Int) -> Unit,
     onToggleMute: () -> Unit,
+    onJumpToLive: () -> Unit,
     onToggleSettings: () -> Unit,
     onToggleChat: () -> Unit,
     onToggleTheater: () -> Unit,
@@ -611,7 +617,12 @@ private fun PlaybackControls(
             modifier = Modifier.width(150.dp).padding(horizontal = 10.dp),
         )
         Spacer(Modifier.weight(1f))
-        LivePill()
+        // Also acts as "catch up to live". The quality suffix makes the player's
+        // lock state visible at a glance without opening the settings menu.
+        LivePill(
+            trailing = currentQuality.label,
+            onClick = onJumpToLive,
+        )
         Spacer(Modifier.width(8.dp))
         ConnectedControlsGroup(
             settingsOpen = settingsOpen,
