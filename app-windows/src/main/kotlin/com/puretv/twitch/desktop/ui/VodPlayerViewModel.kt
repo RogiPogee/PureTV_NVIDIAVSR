@@ -11,6 +11,7 @@ import com.puretv.twitch.desktop.data.WatchProgress
 import com.puretv.twitch.desktop.data.WatchProgressStore
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.player.DesktopPlayer
+import com.puretv.twitch.desktop.player.nextScreenshotFile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ data class VodPlayerState(
     val error: String? = null,
     val resumeOfferMs: Long? = null,
     val storyboard: Storyboard? = null,
+    val screenshotNotice: String? = null,
 )
 
 /**
@@ -146,6 +148,20 @@ class VodPlayerViewModel(
     }
 
     fun togglePlayPause() = player.togglePlayPause()
+
+    fun captureScreenshot() {
+        val file = nextScreenshotFile(launch.channelLogin)
+        val accepted = player.saveScreenshot(file)
+        val notice = if (accepted) "Screenshot saved to Pictures/PureTV" else "Screenshot failed"
+        _state.value = _state.value.copy(screenshotNotice = notice)
+        scope.launch {
+            delay(3_000)
+            if (_state.value.screenshotNotice == notice) {
+                _state.value = _state.value.copy(screenshotNotice = null)
+            }
+        }
+    }
+
     fun setVolume(v: Int) = player.setVolume(v)
     fun toggleMute() = player.toggleMute()
 
