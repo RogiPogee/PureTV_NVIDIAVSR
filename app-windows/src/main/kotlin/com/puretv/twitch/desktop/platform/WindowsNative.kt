@@ -132,6 +132,55 @@ object WindowsNative {
     }
 
     /**
+     * Expands [window] to the exact native pixel rectangle of the monitor it is
+     * currently on. This intentionally bypasses Compose WindowState/AWT HiDPI
+     * conversions: Win32's MONITORINFO + SetWindowPos operate in the same
+     * virtual-screen coordinate space, so a 2560x1440 monitor is filled by the
+     * actual 2560x1440 monitor rectangle instead of a DPI-scaled logical size.
+     *
+     * Safe to call repeatedly. If the window already matches the monitor exactly,
+     * no SetWindowPos call is made, which lets AppShellController use this as a
+     * fullscreen resize/move guard without creating a resize event loop.
+     */
+    fun fitToCurrentMonitor(window: Window): Boolean {
+        if (!isWindows) return false
+        return runCatching {
+            val pointer = Native.getWindowPointer(window) ?: return false
+            val hwnd = WinDef.HWND(pointer)
+            val u = User32.INSTANCE
+            val monitor = u.MonitorFromWindow(hwnd, WinUser.MONITOR_DEFAULTTONEAREST) ?: return false
+            val info = WinUser.MONITORINFO()
+            if (!u.GetMonitorInfo(monitor, info).booleanValue()) return false
+
+            val target = info.rcMonitor
+            val width = target.right - target.left
+            val height = target.bottom - target.top
+            if (width <= 0 || height <= 0) return false
+
+            val current = WinDef.RECT()
+            if (u.GetWindowRect(hwnd, current) &&
+                current.left == target.left &&
+                current.top == target.top &&
+                current.right == target.right &&
+                current.bottom == target.bottom
+            ) {
+                return true
+            }
+
+            u.SetWindowPos(
+                hwnd,
+                null,
+                target.left,
+                target.top,
+                width,
+                height,
+                SWP_NOZORDER or SWP_NOACTIVATE or SWP_FRAMECHANGED,
+            )
+            true
+        }.getOrDefault(false)
+    }
+
+    /**
      * Makes the undecorated top-level [window] participate in Windows' native
      * window management — Aero Snap (drag-to-edge tiling, drag-to-top maximize),
      * Win11 Snap Layouts, Win+Arrow keyboard snapping, and edge-drag resize —
