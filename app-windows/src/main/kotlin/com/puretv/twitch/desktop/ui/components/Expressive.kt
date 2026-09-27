@@ -570,10 +570,16 @@ fun LivePill(
     modifier: Modifier = Modifier,
     trailing: String? = null,
     height: Dp = 28.dp,
+    onClick: (() -> Unit)? = null,
 ) {
     val c = PureTvTheme.colors
-    Row(
+    val interactive = if (onClick != null) {
+        modifier.clickable(onClick = onClick)
+    } else {
         modifier
+    }
+    Row(
+        interactive
             .height(height)
             .clip(CircleShape)
             .background(c.live)
