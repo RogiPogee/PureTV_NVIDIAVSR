@@ -28,7 +28,7 @@ class SevenTvEventParseTest {
         assertEquals("catJAM", e.name)
         assertEquals(EmoteProvider.SEVENTV, e.provider)
         assertTrue(e.animated)
-        assertEquals("https://cdn.7tv.app/emote/60aeab8df6a2c3b332d809c0/4x.webp", e.url)
+        assertEquals("https://cdn.7tv.app/emote/60aeab8df6a2c3b332d809c0/2x.webp", e.url)
     }
 
     @Test fun parsesPulledEmoteAsRemoval() {
