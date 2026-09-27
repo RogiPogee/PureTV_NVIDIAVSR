@@ -11,10 +11,14 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import java.awt.BorderLayout
 import java.awt.Canvas
 import java.awt.Color
+import java.awt.Cursor
+import java.awt.Point
+import java.awt.Toolkit
 import java.awt.event.HierarchyEvent
 import java.awt.event.HierarchyListener
 import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
+import java.awt.image.BufferedImage
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 
@@ -55,12 +59,16 @@ import javax.swing.SwingUtilities
  *
  * @param onUserActivity invoked on real cursor movement over the video surface
  *   (used to un-hide the auto-hiding player controls).
+ * @param hideCursor hides the native AWT cursor over the heavyweight video surface.
+ *   The caller enables this only after fullscreen controls auto-hide; the next real
+ *   mouse movement calls [onUserActivity], reveals the controls, and restores it.
  */
 @Composable
 fun VlcPlayerView(
     vlcPlayer: DesktopPlayer,
     modifier: Modifier = Modifier,
     onUserActivity: () -> Unit = {},
+    hideCursor: Boolean = false,
 ) {
     // Override removeNotify so the backend releases this surface BEFORE the native
     // peer (HWND) is destroyed. mpv binds its `wid` once and keeps rendering into
@@ -77,6 +85,17 @@ fun VlcPlayerView(
             }
         }.apply { background = Color.BLACK; isFocusable = false }
     }
+    // The video is a heavyweight native Canvas, so Compose pointer icons cannot
+    // hide its cursor. Give the Canvas an actually transparent AWT cursor instead.
+    val hiddenCursor = remember {
+        val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
+        Toolkit.getDefaultToolkit().createCustomCursor(image, Point(0, 0), "puretv-hidden")
+    }
+    DisposableEffect(canvas, hideCursor, hiddenCursor) {
+        canvas.cursor = if (hideCursor) hiddenCursor else Cursor.getDefaultCursor()
+        onDispose { canvas.cursor = Cursor.getDefaultCursor() }
+    }
+
     val panel = remember {
         JPanel(BorderLayout()).apply {
             background = Color.BLACK
