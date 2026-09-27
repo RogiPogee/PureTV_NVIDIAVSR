@@ -33,6 +33,8 @@ fun PlayerSettingsMenu(
     activeBackend: PlaybackBackend,
     selectedBackend: PlaybackBackend,
     onBackendSelected: (PlaybackBackend) -> Unit,
+    alwaysOnTop: Boolean,
+    onAlwaysOnTopSelected: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = PureTvTheme.colors
@@ -80,6 +82,19 @@ fun PlayerSettingsMenu(
             Text(
                 if (selectedBackend == activeBackend) "Engine changes apply after restart."
                 else "Restart to switch from ${activeBackend.label} to ${selectedBackend.label}.",
+                style = PureTvType.dataSmall,
+                color = c.outline,
+            )
+        }
+        PlayerMenuSection("Window") {
+            SegmentedControl(
+                options = listOf(false, true),
+                selected = alwaysOnTop,
+                label = { if (it) "Always on top" else "Normal" },
+                onSelect = onAlwaysOnTopSelected,
+            )
+            Text(
+                "Always on top keeps PureTV above other windows while you play or work.",
                 style = PureTvType.dataSmall,
                 color = c.outline,
             )
