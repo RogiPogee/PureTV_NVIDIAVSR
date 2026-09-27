@@ -556,6 +556,8 @@ class StreamViewModel(
 
     fun togglePlayPause() = vlcPlayer.togglePlayPause()
 
+    fun jumpToLive() = vlcPlayer.jumpToLive()
+
     fun setVolume(volume: Int) = vlcPlayer.setVolume(volume)
 
     fun toggleMute() = vlcPlayer.toggleMute()
